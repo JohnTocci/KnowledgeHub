@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}KnowledgeHub - Add Content{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <!-- Hero Section -->
+        <div class="text-center mb-5">
+            <h1 class="display-4 mb-3">
+                <i class="bi bi-lightbulb text-warning"></i>
+                Knowledge Hub
+            </h1>
+            <p class="lead text-muted">
+                Transform any article or YouTube video into structured knowledge with AI-powered summarization.
+            </p>
+        </div>
+
+        <!-- URL Submission Form -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-link-45deg"></i>
+                    Add New Content
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('submit_url') }}" id="urlForm">
+                    <div class="mb-3">
+                        <label for="url" class="form-label">URL</label>
+                        <div class="input-group">
+                            <span class="input-group-text">
+                                <i class="bi bi-globe"></i>
+                            </span>
+                            <input type="url" 
+                                   class="form-control" 
+                                   id="url" 
+                                   name="url" 
+                                   placeholder="https://example.com/article or https://youtube.com/watch?v=..."
+                                   required>
+                        </div>
+                        <div class="form-text">
+                            Supports web articles and YouTube videos
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+                            <i class="bi bi-plus-circle"></i>
+                            Process Content
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Processing Status -->
+                <div id="processingStatus" class="d-none mt-3">
+                    <div class="d-flex align-items-center">
+                        <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <span id="statusText">Processing your content...</span>
+                    </div>
+                    <div class="progress mt-2">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" 
+                             style="width: 100%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features Section -->
+        <div class="row mt-5">
+            <div class="col-md-4 mb-3">
+                <div class="card h-100 border-0 bg-light">
+                    <div class="card-body text-center">
+                        <i class="bi bi-newspaper display-4 text-primary mb-3"></i>
+                        <h6 class="card-title">Web Articles</h6>
+                        <p class="card-text small text-muted">
+                            Extract clean content from any web article, ignoring ads and clutter.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card h-100 border-0 bg-light">
+                    <div class="card-body text-center">
+                        <i class="bi bi-youtube display-4 text-danger mb-3"></i>
+                        <h6 class="card-title">YouTube Videos</h6>
+                        <p class="card-text small text-muted">
+                            Transcribe and summarize YouTube videos using AI-powered speech recognition.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card h-100 border-0 bg-light">
+                    <div class="card-body text-center">
+                        <i class="bi bi-robot display-4 text-success mb-3"></i>
+                        <h6 class="card-title">AI Summaries</h6>
+                        <p class="card-text small text-muted">
+                            Generate concise summaries, key takeaways, and relevant tags automatically.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Files Preview -->
+        <div class="card mt-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="bi bi-clock-history"></i>
+                    Recent Files
+                </h6>
+                <a href="{{ url_for('browse_files') }}" class="btn btn-sm btn-outline-primary">
+                    View All
+                </a>
+            </div>
+            <div class="card-body" id="recentFiles">
+                <div class="text-center text-muted">
+                    <i class="bi bi-hourglass-split"></i>
+                    Loading recent files...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Load recent files
+fetch('/api/files')
+    .then(response => response.json())
+    .then(data => {
+        const container = document.getElementById('recentFiles');
+        if (data.files && data.files.length > 0) {
+            const recentFiles = data.files.slice(0, 5);
+            container.innerHTML = recentFiles.map(file => `
+                <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                    <div>
+                        <a href="/view/${encodeURIComponent(file.name)}" 
+                           class="text-decoration-none fw-medium">
+                            ${file.name}
+                        </a>
+                        <small class="text-muted d-block">
+                            ${new Date(file.modified).toLocaleDateString()}
+                        </small>
+                    </div>
+                    <small class="text-muted">
+                        ${(file.size / 1024).toFixed(1)} KB
+                    </small>
+                </div>
+            `).join('');
+        } else {
+            container.innerHTML = `
+                <div class="text-center text-muted">
+                    <i class="bi bi-folder2-open"></i>
+                    <p class="mb-0">No files yet. Submit your first URL above!</p>
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        console.error('Error loading recent files:', error);
+        document.getElementById('recentFiles').innerHTML = `
+            <div class="text-center text-muted">
+                <i class="bi bi-exclamation-triangle"></i>
+                <p class="mb-0">Could not load recent files</p>
+            </div>
+        `;
+    });
+</script>
+{% endblock %}

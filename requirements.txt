@@ -3,3 +3,6 @@ openai==1.102.0
 openai_whisper==20250625
 python-dotenv==1.1.1
 yt_dlp==2025.8.22
+flask==3.1.0
+markdown==3.7
+lxml_html_clean==0.4.1

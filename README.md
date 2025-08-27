@@ -12,11 +12,14 @@ We consume vast amounts of information online, but most of it is forgotten. This
 
 ## ✨ Features
 
+-   **Dual Interface Support:** Use either the command-line interface or the modern web interface.
 -   **Dual Source Support:** Processes both standard web articles and YouTube videos.
 -   **Intelligent Content Extraction:** Uses `newspaper3k` to cleanly scrape article text, ignoring ads and boilerplate.
 -   **Video Transcription:** Downloads audio from YouTube videos and uses OpenAI's Whisper model for accurate transcription.
 -   **AI-Powered Summarization:** Leverages a powerful language model (e.g., GPT-4o) to generate a concise summary, a bulleted list of key takeaways, and relevant tags for categorization.
 -   **Automatic Note Creation:** Saves the structured output as a well-formatted Markdown (`.md`) file, ready for any note-taking app.
+-   **Web Interface:** Modern, responsive web UI for easy file management and content browsing.
+-   **Mobile Optimized:** Works seamlessly on both desktop and mobile devices.
 -   **Local First:** All your notes are saved directly to a folder on your computer, ensuring you own and control your data.
 
 ---
@@ -106,7 +109,27 @@ The application will automatically create the knowledge vault directory if it do
 
 ## ▶️ Usage
 
-With your virtual environment activated, simply run the script from the root directory:
+### CLI Usage
+
+With your virtual environment activated, run the CLI script from the root directory:
 
 ```bash
 python hub.py
+```
+
+### Web Interface Usage
+
+For a more user-friendly experience, launch the web interface:
+
+```bash
+python web.py
+```
+
+Then open your browser and navigate to `http://localhost:5000`
+
+The web interface provides:
+- **Easy URL submission**: Simple form to submit articles and YouTube videos
+- **File browsing**: View and search through your knowledge vault
+- **Mobile-responsive**: Optimized for both desktop and mobile use
+- **File viewer**: Read saved content with rendered markdown or raw text
+- **Configuration display**: View current settings and system status

@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block title %}{{ filename }} - KnowledgeHub{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <!-- Header -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item">
+                            <a href="{{ url_for('browse_files') }}">
+                                <i class="bi bi-folder"></i> Knowledge Vault
+                            </a>
+                        </li>
+                        <li class="breadcrumb-item active" aria-current="page">
+                            {{ filename }}
+                        </li>
+                    </ol>
+                </nav>
+            </div>
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-outline-secondary" id="toggleView">
+                    <i class="bi bi-eye" id="viewIcon"></i>
+                    <span id="viewText">Rendered</span>
+                </button>
+                <button type="button" class="btn btn-outline-secondary" onclick="copyToClipboard()">
+                    <i class="bi bi-clipboard"></i>
+                    Copy
+                </button>
+                <a href="{{ url_for('browse_files') }}" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-left"></i>
+                    Back to Files
+                </a>
+            </div>
+        </div>
+
+        <!-- File Content -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-file-earmark-text"></i>
+                    {{ filename }}
+                </h5>
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-primary active" data-view="rendered">
+                        <i class="bi bi-eye"></i> Rendered
+                    </button>
+                    <button type="button" class="btn btn-outline-primary" data-view="markdown">
+                        <i class="bi bi-code"></i> Markdown
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Rendered Content (Default View) -->
+                <div id="renderedContent" class="content-view">
+                    <div class="markdown-content">
+                        {{ html_content | safe }}
+                    </div>
+                </div>
+
+                <!-- Raw Markdown Content -->
+                <div id="markdownContent" class="content-view d-none">
+                    <pre class="bg-light p-3 rounded"><code>{{ content }}</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Copy Success Toast -->
+        <div class="toast-container position-fixed bottom-0 end-0 p-3">
+            <div id="copyToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="toast-header">
+                    <i class="bi bi-check-circle-fill text-success me-2"></i>
+                    <strong class="me-auto">Success</strong>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+                <div class="toast-body">
+                    Content copied to clipboard!
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const toggleButtons = document.querySelectorAll('[data-view]');
+    const renderedContent = document.getElementById('renderedContent');
+    const markdownContent = document.getElementById('markdownContent');
+    
+    // View toggle functionality
+    toggleButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const view = this.dataset.view;
+            
+            // Update button states
+            toggleButtons.forEach(btn => btn.classList.remove('active'));
+            this.classList.add('active');
+            
+            // Show/hide content
+            if (view === 'rendered') {
+                renderedContent.classList.remove('d-none');
+                markdownContent.classList.add('d-none');
+            } else {
+                renderedContent.classList.add('d-none');
+                markdownContent.classList.remove('d-none');
+            }
+        });
+    });
+});
+
+function copyToClipboard() {
+    const activeView = document.querySelector('[data-view].active').dataset.view;
+    let textToCopy;
+    
+    if (activeView === 'markdown') {
+        textToCopy = document.querySelector('#markdownContent code').textContent;
+    } else {
+        // For rendered view, copy the markdown source
+        textToCopy = document.querySelector('#markdownContent code').textContent;
+    }
+    
+    navigator.clipboard.writeText(textToCopy).then(function() {
+        // Show success toast
+        const toast = new bootstrap.Toast(document.getElementById('copyToast'));
+        toast.show();
+    }).catch(function(err) {
+        console.error('Could not copy text: ', err);
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = textToCopy;
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            const toast = new bootstrap.Toast(document.getElementById('copyToast'));
+            toast.show();
+        } catch (err) {
+            console.error('Fallback: Could not copy text: ', err);
+        }
+        document.body.removeChild(textArea);
+    });
+}
+
+// Add syntax highlighting and better styling for code blocks
+document.addEventListener('DOMContentLoaded', function() {
+    // Add classes to improve markdown rendering
+    document.querySelectorAll('blockquote').forEach(el => {
+        el.classList.add('border-start', 'border-primary', 'ps-3', 'text-muted', 'fst-italic');
+    });
+    
+    document.querySelectorAll('table').forEach(el => {
+        el.classList.add('table', 'table-striped', 'table-hover');
+        const wrapper = document.createElement('div');
+        wrapper.classList.add('table-responsive');
+        el.parentNode.insertBefore(wrapper, el);
+        wrapper.appendChild(el);
+    });
+    
+    document.querySelectorAll('code').forEach(el => {
+        if (!el.parentElement.tagName === 'PRE') {
+            el.classList.add('bg-light', 'px-1', 'rounded');
+        }
+    });
+    
+    document.querySelectorAll('pre code').forEach(el => {
+        el.parentElement.classList.add('bg-dark', 'text-light', 'p-3', 'rounded', 'overflow-auto');
+    });
+});
+</script>
+
+<style>
+.markdown-content {
+    line-height: 1.6;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.markdown-content h1 { border-bottom: 2px solid #e9ecef; padding-bottom: 0.5rem; }
+.markdown-content h2 { border-bottom: 1px solid #e9ecef; padding-bottom: 0.25rem; }
+
+.markdown-content ul,
+.markdown-content ol {
+    padding-left: 1.5rem;
+}
+
+.markdown-content li {
+    margin-bottom: 0.25rem;
+}
+
+.markdown-content a {
+    color: #0d6efd;
+    text-decoration: none;
+}
+
+.markdown-content a:hover {
+    text-decoration: underline;
+}
+
+.markdown-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.375rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+
+.markdown-content hr {
+    margin: 2rem 0;
+    border: none;
+    border-top: 2px solid #e9ecef;
+}
+
+pre {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+    .btn-group {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    .btn-group .btn {
+        border-radius: 0.375rem !important;
+        margin-bottom: 0.25rem;
+    }
+}
+</style>
+{% endblock %}
