@@ -67,20 +67,40 @@ Before you begin, ensure you have the following installed:
 
 ## ⚙️ Configuration
 
-Before running the script for the first time, you need to configure the destination for your notes.
+The KnowledgeHub can be customized using a `config.json` file. If no configuration file exists, the application will use sensible defaults.
 
--   Open the `hub.py` file.
--   Find the `KNOWLEDGE_VAULT_PATH` variable.
--   **Change the path** to the absolute path of the folder where you want your notes to be saved.
+### Creating Your Configuration
 
-    ```python
-    # Example for Windows
-    KNOWLEDGE_VAULT_PATH = r"C:\Users\YourName\Documents\MyNotes"
-
-    # Example for macOS/Linux
-    KNOWLEDGE_VAULT_PATH = "/Users/yourname/Documents/MyNotes"
+1.  **Copy the example configuration:**
+    ```bash
+    cp config.example.json config.json
     ```
-    *The script will automatically create this folder if it doesn't exist.*
+
+2.  **Edit the `config.json` file** to customize the following settings:
+
+    -   **`knowledge_vault_path`**: The folder where your notes will be saved (default: `~/KnowledgeHub`)
+    -   **`openai_model`**: The OpenAI model to use for summarization (default: `gpt-5-mini`)
+    -   **`whisper_model`**: The Whisper model for transcription (options: `tiny`, `base`, `small`, `medium`, `large`)
+    -   **`date_format`**: Date format for timestamps (default: `%Y-%m-%d %H:%M`)
+    -   **`filename_template`**: Template for saved file names (default: `{title}.md`)
+    -   **`markdown_template`**: Customize the markdown file format
+    -   **`youtube_download`**: YouTube audio download settings
+    -   **`summarization_prompt`**: Customize the AI prompt for content summarization
+    -   **`system_prompt`**: Customize the AI system prompt
+
+### Example Configuration
+
+```json
+{
+  "knowledge_vault_path": "~/Documents/MyKnowledgeBase",
+  "openai_model": "gpt-5-mini",
+  "whisper_model": "small",
+  "date_format": "%Y-%m-%d",
+  "filename_template": "{title} - {timestamp}.md"
+}
+```
+
+The application will automatically create the knowledge vault directory if it doesn't exist.
 
 ---
 
