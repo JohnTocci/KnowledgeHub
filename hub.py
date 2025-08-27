@@ -6,8 +6,8 @@ from newspaper import Article
 import re
 from datetime import datetime
 from dotenv import load_dotenv
+from config_manager import config
 
-KNOWLEDGE_VAULT_PATH = r"C:\Users\johnt\OneDrive\Documents\MyKnowledgeHub\KnowledgeHub"
 load_dotenv()
 
 def get_article_text(url):
@@ -24,12 +24,14 @@ def get_article_text(url):
 
 def get_youtube_transcription(url):
     """Downloads a YouTube video's audio and transcribes it."""
+    youtube_options = config.get_youtube_options()
+    
     ydl_opts = {
-        'format': 'bestaudio/best',
+        'format': youtube_options['format'],
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
+            'preferredcodec': youtube_options['audio_codec'],
+            'preferredquality': youtube_options['audio_quality'],
         }],
         'outtmpl': 'temp_audio.%(ext)s',
         'quiet': True,
@@ -43,7 +45,7 @@ def get_youtube_transcription(url):
         print("✅ YouTube audio downloaded.")
         
         print("Transcribing audio... (this may take a moment)")
-        model = whisper.load_model("medium") # "base" is fast and good, "medium" is better
+        model = whisper.load_model(config.get_whisper_model())
         result = model.transcribe("temp_audio.mp3")
         transcription = result["text"]
         
@@ -62,23 +64,13 @@ def summarize_text(text, title):
     """Uses OpenAI's API to summarize text, extract takeaways, and suggest tags."""
     print("🤖 Calling AI for summarization...")
     
-    prompt = f"""
-    Analyze the following text from a source titled "{title}".
-
-    TEXT:
-    "{text}"
-
-    Based on the text, please provide the following in a clear, well-structured format:
-    1.  **Summary:** A concise summary of the main points.
-    2.  **Key Takeaways:** A bulleted list of the most important insights or actionable items.
-    3.  **Suggested Tags:** A short, comma-separated list of 3-5 relevant keywords or tags for categorization.
-    """
+    prompt = config.get_summarization_prompt().format(title=title, text=text)
     
     try:
         response = client.chat.completions.create(
-            model="gpt-5-mini",
+            model=config.get_openai_model(),
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that summarizes content for a personal knowledge base."},
+                {"role": "system", "content": config.get_system_prompt()},
                 {"role": "user", "content": prompt}
             ]
         )
@@ -92,21 +84,26 @@ def save_as_markdown(content, title, url):
     """Saves the content as a Markdown file."""
     # Sanitize the title to make it a valid filename
     sanitized_title = re.sub(r'[\\/*?:"<>|]', "", title)
-    filename = f"{sanitized_title}.md"
-    filepath = os.path.join(KNOWLEDGE_VAULT_PATH, filename)
+    
+    # Get filename template and format it
+    filename_template = config.get_filename_template()
+    filename = filename_template.format(title=sanitized_title)
+    
+    # Ensure directory exists
+    vault_path = config.get_vault_path()
+    os.makedirs(vault_path, exist_ok=True)
+    
+    filepath = os.path.join(vault_path, filename)
     
     # Format the final content for the Markdown file
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    timestamp = datetime.now().strftime(config.get_date_format())
     
-    markdown_content = f"""# {title}
-
-**Source:** [{url}]({url})
-**Date Processed:** {timestamp}
-
----
-
-{content}
-"""
+    # Get markdown template
+    markdown_template = config.get_markdown_template()
+    header = markdown_template['header'].format(title=title, url=url, timestamp=timestamp)
+    content_section = markdown_template['content'].format(content=content)
+    
+    markdown_content = header + content_section
     
     try:
         with open(filepath, "w", encoding="utf-8") as f:
@@ -117,6 +114,11 @@ def save_as_markdown(content, title, url):
         
 def main():
     """The main function to run the knowledge hub script."""
+    print(f"📂 Knowledge Vault: {config.get_vault_path()}")
+    print(f"🤖 AI Model: {config.get_openai_model()}")
+    print(f"🎤 Whisper Model: {config.get_whisper_model()}")
+    print("---")
+    
     input_url = input("Enter a URL (article or YouTube): ")
     
     if "youtube.com" in input_url or "youtu.be" in input_url:

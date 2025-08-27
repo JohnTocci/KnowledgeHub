@@ -1,0 +1,19 @@
+{
+  "_comment": "KnowledgeHub Configuration File - Customize these settings to your preferences",
+  "knowledge_vault_path": "~/KnowledgeHub",
+  "openai_model": "gpt-4o-mini",
+  "whisper_model": "medium",
+  "date_format": "%Y-%m-%d %H:%M",
+  "filename_template": "{title}.md",
+  "markdown_template": {
+    "header": "# {title}\n\n**Source:** [{url}]({url})\n**Date Processed:** {timestamp}\n\n---\n\n",
+    "content": "{content}\n"
+  },
+  "youtube_download": {
+    "format": "bestaudio/best",
+    "audio_codec": "mp3",
+    "audio_quality": "192"
+  },
+  "summarization_prompt": "Analyze the following text from a source titled \"{title}\".\n\nTEXT:\n\"{text}\"\n\nBased on the text, please provide the following in a clear, well-structured format:\n1.  **Summary:** A concise summary of the main points.\n2.  **Key Takeaways:** A bulleted list of the most important insights or actionable items.\n3.  **Suggested Tags:** A short, comma-separated list of 3-5 relevant keywords or tags for categorization.",
+  "system_prompt": "You are a helpful assistant that summarizes content for a personal knowledge base."
+}
