@@ -13,6 +13,9 @@ import re
 from streamlit_option_menu import option_menu
 import pandas as pd
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Add src directory to Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
@@ -508,7 +511,7 @@ def show_configuration_page():
     
     config_data = {
         "Knowledge Vault Path": get_vault_path(),
-        "OpenAI Model": "gpt-4 (Demo Mode)" if DEMO_MODE else "gpt-4",
+        "OpenAI Model": "GPT-5 (Demo Mode)" if DEMO_MODE else "GPT-5 Mini",
         "Whisper Model": "medium (Demo Mode)" if DEMO_MODE else "medium",
         "Date Format": "%Y-%m-%d %H:%M",
         "Filename Template": "{title}.md"

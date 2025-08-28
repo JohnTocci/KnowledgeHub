@@ -109,6 +109,7 @@ def save_as_markdown(content, title, url):
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(markdown_content)
         print(f"✅ Note saved successfully to: {filepath}")
+        return filepath
     except Exception as e:
         print(f"❌ Error saving file: {e}")
         
