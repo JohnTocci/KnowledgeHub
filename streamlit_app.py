@@ -254,6 +254,73 @@ def show_add_content_page():
     # Recent files preview
     show_recent_files_preview()
 
+def search_file_content(file_path, search_term, search_mode):
+    """Search through file content and metadata."""
+    if not search_term:
+        return True
+    
+    search_term_lower = search_term.lower()
+    filename = os.path.basename(file_path)
+    
+    # Search in filename
+    if search_mode in ["All", "Filename only"]:
+        if search_term_lower in filename.lower():
+            return True
+    
+    # Search in content and tags
+    if search_mode in ["All", "Content only", "Tags only"]:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Extract tags from the content (look for "## Suggested Tags" or "## Tags" section)
+            tags = ""
+            lines = content.split('\n')
+            in_tags_section = False
+            for line in lines:
+                if line.strip().startswith('## Suggested Tags') or line.strip().startswith('## Tags'):
+                    in_tags_section = True
+                    continue
+                elif line.strip().startswith('##') and in_tags_section:
+                    break
+                elif in_tags_section:
+                    tags += line.strip() + " "
+            
+            # Search in tags only
+            if search_mode == "Tags only":
+                return search_term_lower in tags.lower()
+            
+            # Search in content only or all
+            if search_mode in ["All", "Content only"]:
+                return search_term_lower in content.lower()
+                
+        except Exception as e:
+            # If file can't be read, fall back to filename search
+            pass
+    
+    return False
+
+def apply_filters(file_info, date_from, date_to, size_filter):
+    """Apply date and size filters to files."""
+    # Date filter
+    if date_from and file_info['modified'].date() < date_from:
+        return False
+    if date_to and file_info['modified'].date() > date_to:
+        return False
+    
+    # Size filter
+    size_kb = file_info['size'] / 1024
+    if size_filter == "< 1KB" and size_kb >= 1:
+        return False
+    elif size_filter == "1KB - 10KB" and (size_kb < 1 or size_kb > 10):
+        return False
+    elif size_filter == "10KB - 100KB" and (size_kb < 10 or size_kb > 100):
+        return False
+    elif size_filter == "> 100KB" and size_kb <= 100:
+        return False
+    
+    return True
+
 def show_browse_files_page():
     st.markdown("# 📁 Knowledge Vault")
     
@@ -273,32 +340,49 @@ def show_browse_files_page():
     # Search and filter options
     col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
     with col1:
-        search_term = st.text_input("🔍 Search files", placeholder="Search by filename...")
+        search_term = st.text_input("🔍 Search files", placeholder="Search by filename, content, or tags...")
     with col2:
-        sort_by = st.selectbox("Sort by", ["Date (Newest)", "Date (Oldest)", "Name (A-Z)", "Name (Z-A)", "Size"])
+        search_mode = st.selectbox("Search in", ["All", "Filename only", "Content only", "Tags only"])
     with col3:
-        view_mode = st.selectbox("View", ["List", "Grid"])
+        sort_by = st.selectbox("Sort by", ["Date (Newest)", "Date (Oldest)", "Name (A-Z)", "Name (Z-A)", "Size"])
     with col4:
-        st.markdown("<br>", unsafe_allow_html=True)  # Spacing
+        view_mode = st.selectbox("View", ["List", "Grid"])
+    
+    # Advanced search options
+    with st.expander("🔧 Advanced Search"):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            date_from = st.date_input("From date", value=None)
+        with col2:
+            date_to = st.date_input("To date", value=None)
+        with col3:
+            size_filter = st.selectbox("File size", ["Any", "< 1KB", "1KB - 10KB", "10KB - 100KB", "> 100KB"])
+        
         bulk_delete_mode = st.checkbox("🗑️ Bulk Delete Mode")
     
-    # Process files
+    # Process files with enhanced search
     file_data = []
     for file_path in files:
         stat = os.stat(file_path)
         filename = os.path.basename(file_path)
         
         # Apply search filter
-        if search_term and search_term.lower() not in filename.lower():
+        if not search_file_content(file_path, search_term, search_mode):
             continue
         
-        file_data.append({
+        file_info = {
             'name': filename,
             'path': file_path,
             'size': stat.st_size,
             'modified': datetime.fromtimestamp(stat.st_mtime),
             'size_mb': stat.st_size / (1024 * 1024)
-        })
+        }
+        
+        # Apply advanced filters
+        if not apply_filters(file_info, date_from, date_to, size_filter):
+            continue
+        
+        file_data.append(file_info)
     
     # Sort files
     if sort_by == "Date (Newest)":
