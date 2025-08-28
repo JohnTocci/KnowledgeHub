@@ -101,6 +101,52 @@ demo, test, knowledge-hub, ai, summarization, data-extraction"""
         format_file_size, format_time_ago, ContentAnalyzer
     )
     
+    # Mock the new modules for demo mode
+    class MockDatabaseManager:
+        def __init__(self, *args, **kwargs): pass
+        def add_content(self, *args, **kwargs): return 1
+        def get_content_stats(self): 
+            return {'total_count': 5, 'content_by_type': {'article': 3, 'video': 2}, 'content_by_date': {}, 'top_tags': []}
+        def get_all_tags(self): return [{'name': 'demo', 'count': 3}, {'name': 'test', 'count': 2}]
+        def search_content(self, *args, **kwargs): return []
+        def get_all_content(self, *args, **kwargs): return []
+        def set_preference(self, *args, **kwargs): pass
+        def get_preference(self, key, default=None): return 'dark' if key == 'theme' else default
+    
+    class MockFileProcessor:
+        def __init__(self): pass
+        def is_supported_file(self, file_path): return True
+        def get_supported_extensions(self): return ['.pdf', '.docx', '.xlsx', '.csv', '.jpg', '.png']
+        def process_file(self, file_path, title=None):
+            return {
+                'title': title or 'Demo File',
+                'content': 'This is demo content extracted from the uploaded file.',
+                'file_type': 'document',
+                'word_count': 50,
+                'metadata': {},
+                'error': None
+            }
+    
+    DatabaseManager = MockDatabaseManager
+    FileProcessor = MockFileProcessor
+    
+    class MockInternalLinker:
+        def __init__(self, db_manager): pass
+        def find_related_content(self, *args, **kwargs): return []
+        def add_internal_links(self, *args, **kwargs): return False
+        def update_all_internal_links(self): return {"updated": 0, "skipped": 0, "errors": 0}
+        def find_broken_links(self): return []
+    
+    class MockFeedManager:
+        def __init__(self, db_manager): pass
+        def get_feeds(self): return [{'name': 'Demo Feed', 'url': 'https://example.com/rss', 'auto_process': True}]
+        def add_feed(self, *args, **kwargs): return {'success': True, 'feed_name': 'Demo Feed'}
+        def validate_feed_url(self, url): return {'valid': True, 'title': 'Demo Feed'}
+        def get_feed_stats(self): return {'total_feed_items': 5, 'feeds_configured': 1}
+    
+    InternalLinker = MockInternalLinker
+    FeedManager = MockFeedManager
+    
     # Create instances for demo mode
     session_manager = SessionManager()
     url_history = URLHistory()
@@ -149,6 +195,10 @@ else:
             validate_and_sanitize_url, detect_content_type, estimate_processing_time,
             format_file_size, format_time_ago, ContentAnalyzer
         )
+        from database_manager import DatabaseManager
+        from file_processor import FileProcessor
+        from internal_linking import InternalLinker
+        from rss_feeds import FeedManager
         # Initialize session manager
         session_manager.initialize_session_state()
     except ImportError as e:
@@ -266,8 +316,8 @@ def main():
         
         selected = option_menu(
             menu_title=None,
-            options=["Add Content", "Browse Files", "Analytics", "Settings"],
-            icons=["plus-square", "folder2-open", "graph-up", "gear"],
+            options=["Add Content", "Upload Files", "Browse Files", "Analytics", "Chat", "Settings"],
+            icons=["plus-square", "cloud-upload", "folder2-open", "graph-up", "chat-dots", "gear"],
             menu_icon="cast",
             default_index=0,
             styles={
@@ -299,10 +349,14 @@ def main():
     # Main content area
     if selected == "Add Content":
         show_add_content_page()
+    elif selected == "Upload Files":
+        show_upload_files_page()
     elif selected == "Browse Files":
         show_browse_files_page()
     elif selected == "Analytics":
         show_analytics_page()
+    elif selected == "Chat":
+        show_chat_page()
     elif selected == "Settings":
         show_configuration_page()
 
@@ -765,6 +819,92 @@ def show_file_viewer(file_path):
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
         
+        # Tag Management Section
+        st.markdown("---")
+        st.markdown("### 🏷️ Tag Management")
+        
+        # Initialize database manager
+        db_manager = DatabaseManager()
+        
+        # Get current tags for this file
+        file_metadata = db_manager.get_content_metadata(file_path=file_path)
+        current_tags = file_metadata.get('tags', []) if file_metadata else []
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            # Display current tags
+            if current_tags:
+                st.markdown("**Current Tags:**")
+                tag_cols = st.columns(min(len(current_tags), 4))
+                for i, tag in enumerate(current_tags):
+                    with tag_cols[i % 4]:
+                        if st.button(f"❌ {tag}", key=f"remove_tag_{tag}_{filename}", help="Click to remove"):
+                            # Remove tag
+                            new_tags = [t for t in current_tags if t != tag]
+                            if file_metadata:
+                                db_manager.update_content_tags(file_metadata['id'], new_tags)
+                            st.success(f"Removed tag: {tag}")
+                            st.rerun()
+            else:
+                st.info("No tags assigned yet")
+        
+        with col2:
+            # Add new tag
+            new_tag = st.text_input("Add new tag:", placeholder="Enter tag name", key=f"new_tag_{filename}")
+            if st.button("➕ Add Tag", key=f"add_tag_btn_{filename}"):
+                if new_tag and new_tag.strip():
+                    clean_tag = new_tag.strip().lower()
+                    if clean_tag not in current_tags:
+                        new_tags = current_tags + [clean_tag]
+                        
+                        # Add to database
+                        if file_metadata:
+                            db_manager.update_content_tags(file_metadata['id'], new_tags)
+                        else:
+                            # Create new entry if not in database
+                            title = filename.replace('.md', '').replace('_', ' ').title()
+                            db_manager.add_content(
+                                file_path=file_path,
+                                title=title,
+                                content_type='article',
+                                tags=new_tags
+                            )
+                        
+                        st.success(f"Added tag: {clean_tag}")
+                        st.rerun()
+                    else:
+                        st.warning("Tag already exists!")
+                else:
+                    st.warning("Please enter a valid tag name")
+        
+        # Suggested tags from other content
+        all_tags = db_manager.get_all_tags()
+        if all_tags:
+            popular_tags = [tag['name'] for tag in all_tags[:10] if tag['name'] not in current_tags]
+            if popular_tags:
+                st.markdown("**Suggested tags (click to add):**")
+                suggestion_cols = st.columns(min(len(popular_tags), 5))
+                for i, tag in enumerate(popular_tags):
+                    with suggestion_cols[i % 5]:
+                        if st.button(f"+ {tag}", key=f"suggest_tag_{tag}_{filename}"):
+                            new_tags = current_tags + [tag]
+                            if file_metadata:
+                                db_manager.update_content_tags(file_metadata['id'], new_tags)
+                            else:
+                                title = filename.replace('.md', '').replace('_', ' ').title()
+                                db_manager.add_content(
+                                    file_path=file_path,
+                                    title=title,
+                                    content_type='article',
+                                    tags=new_tags
+                                )
+                            st.success(f"Added suggested tag: {tag}")
+                            st.rerun()
+        
+        st.markdown("---")
+        
+        # File content display
         if view_mode == "📖 Rendered":
             st.markdown(content, unsafe_allow_html=True)
         else:
@@ -801,112 +941,381 @@ def show_file_viewer(file_path):
         st.error(f"Error reading file: {e}")
 
 def show_analytics_page():
-    st.markdown("# 📊 Knowledge Analytics")
+    """Enhanced analytics page with tag cloud, content breakdown, and heatmap."""
+    st.markdown("""
+    <div class="main-header">
+        <h1>📊 Knowledge Analytics</h1>
+        <p>Visualize and analyze your knowledge vault</p>
+    </div>
+    """, unsafe_allow_html=True)
     
+    # Initialize database manager
+    db_manager = DatabaseManager()
     vault_path = get_vault_path()
     
     if not os.path.exists(vault_path):
         st.info("No knowledge vault found. Create content to see analytics!")
         return
     
-    files = glob.glob(os.path.join(vault_path, "*.md"))
+    # Get statistics from database
+    stats = db_manager.get_content_stats()
     
-    if not files:
+    # Legacy file counting for files not in database yet
+    files = glob.glob(os.path.join(vault_path, "*.md"))
+    total_files = max(len(files), stats.get('total_count', 0))
+    
+    if total_files == 0:
         st.info("No files to analyze yet!")
         return
     
-    # File statistics
+    # Dashboard stats
     col1, col2, col3, col4 = st.columns(4)
     
-    total_files = len(files)
-    total_size = sum(os.path.getsize(f) for f in files)
+    total_size = sum(os.path.getsize(f) for f in files) if files else 0
     avg_size = total_size / total_files if total_files > 0 else 0
     
     # Recent activity
-    recent_files = [f for f in files if (datetime.now() - datetime.fromtimestamp(os.path.getmtime(f))).days <= 7]
+    recent_files = [f for f in files if (datetime.now() - datetime.fromtimestamp(os.path.getmtime(f))).days <= 7] if files else []
     
     with col1:
-        st.markdown("""
+        st.markdown(f"""
         <div class="stat-card">
             <h2>📚</h2>
-            <h3>{}</h3>
+            <h3>{total_files}</h3>
             <p>Total Files</p>
         </div>
-        """.format(total_files), unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
     
     with col2:
-        st.markdown("""
+        st.markdown(f"""
         <div class="stat-card">
             <h2>💾</h2>
-            <h3>{:.1f} MB</h3>
+            <h3>{total_size / (1024*1024):.1f} MB</h3>
             <p>Total Size</p>
         </div>
-        """.format(total_size / (1024*1024)), unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
     
     with col3:
-        st.markdown("""
+        st.markdown(f"""
         <div class="stat-card">
             <h2>📄</h2>
-            <h3>{:.1f} KB</h3>
+            <h3>{avg_size / 1024:.1f} KB</h3>
             <p>Avg File Size</p>
         </div>
-        """.format(avg_size / 1024), unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
     
     with col4:
-        st.markdown("""
+        st.markdown(f"""
         <div class="stat-card">
             <h2>🆕</h2>
-            <h3>{}</h3>
+            <h3>{len(recent_files)}</h3>
             <p>This Week</p>
         </div>
-        """.format(len(recent_files)), unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
     
-    # Charts
     st.markdown("---")
+    
+    # Three-column layout for enhanced analytics
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    with col1:
+        st.markdown("### ☁️ Tag Cloud")
+        
+        # Get tags from database
+        tags_data = db_manager.get_all_tags()
+        
+        if tags_data and not DEMO_MODE:
+            try:
+                from wordcloud import WordCloud
+                import matplotlib.pyplot as plt
+                
+                # Prepare tag data for word cloud
+                tag_freq = {tag['name']: tag['count'] for tag in tags_data}
+                
+                if tag_freq:
+                    # Generate word cloud
+                    wordcloud = WordCloud(
+                        width=400, 
+                        height=300, 
+                        background_color='white',
+                        colormap='viridis',
+                        max_words=50
+                    ).generate_from_frequencies(tag_freq)
+                    
+                    # Display word cloud
+                    fig, ax = plt.subplots(figsize=(8, 6))
+                    ax.imshow(wordcloud, interpolation='bilinear')
+                    ax.axis('off')
+                    st.pyplot(fig)
+                else:
+                    st.info("No tags found yet!")
+                    
+            except ImportError:
+                # Fallback: Show top tags as text
+                st.markdown("**Top Tags:**")
+                for tag in tags_data[:10]:
+                    st.write(f"• {tag['name']} ({tag['count']})")
+        else:
+            # Demo mode or no tags
+            st.markdown("""
+            **Demo Tag Cloud:**
+            - AI ⭐⭐⭐⭐
+            - Knowledge Management ⭐⭐⭐
+            - Productivity ⭐⭐⭐
+            - Technology ⭐⭐
+            - Learning ⭐⭐
+            - Automation ⭐
+            """)
+    
+    with col2:
+        st.markdown("### 📊 Content Type Breakdown")
+        
+        # Get content type distribution
+        content_by_type = stats.get('content_by_type', {})
+        
+        if not content_by_type and files:
+            # Fallback: analyze file types from filesystem
+            content_by_type = {'article': len(files)}
+        
+        if content_by_type:
+            # Create pie chart
+            fig = px.pie(
+                values=list(content_by_type.values()),
+                names=list(content_by_type.keys()),
+                title="Content Distribution"
+            )
+            fig.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                showlegend=True
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No content to analyze yet!")
+    
+    with col3:
+        st.markdown("### 🔥 Activity Heatmap")
+        
+        # Get activity data by date
+        content_by_date = stats.get('content_by_date', {})
+        
+        if not content_by_date and files:
+            # Fallback: create from file modification dates
+            dates = [datetime.fromtimestamp(os.path.getmtime(f)).date() for f in files]
+            date_counts = pd.Series(dates).value_counts()
+            content_by_date = {str(date): count for date, count in date_counts.items()}
+        
+        if content_by_date:
+            # Create heatmap-style calendar view
+            dates = list(content_by_date.keys())
+            counts = list(content_by_date.values())
+            
+            df = pd.DataFrame({
+                'date': pd.to_datetime(dates),
+                'count': counts
+            })
+            
+            # Group by week for better visualization
+            df['week'] = df['date'].dt.isocalendar().week
+            df['day'] = df['date'].dt.day_name()
+            
+            if len(df) > 0:
+                heatmap_data = df.pivot_table(
+                    values='count', 
+                    index='day', 
+                    columns='week', 
+                    fill_value=0
+                )
+                
+                fig = px.imshow(
+                    heatmap_data,
+                    title="Activity by Day/Week",
+                    color_continuous_scale="Greens"
+                )
+                fig.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Not enough data for heatmap")
+        else:
+            # Demo heatmap
+            demo_data = pd.DataFrame({
+                'day': ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                'activity': [2, 1, 3, 0, 1, 0, 1]
+            })
+            
+            fig = px.bar(
+                demo_data,
+                x='day',
+                y='activity',
+                title="Weekly Activity (Demo)"
+            )
+            fig.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+            )
+            st.plotly_chart(fig, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # Additional analytics
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 📈 Timeline Trend")
+        
+        if files:
+            # Prepare data for timeline chart
+            dates = [datetime.fromtimestamp(os.path.getmtime(f)).date() for f in files]
+            date_counts = pd.Series(dates).value_counts().sort_index()
+            
+            fig = px.line(
+                x=date_counts.index, 
+                y=date_counts.values,
+                title="Content Created Over Time"
+            )
+            fig.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No timeline data available")
+    
+    with col2:
+        st.markdown("### 💾 Storage Analysis")
+        
+        if files:
+            # File size distribution
+            sizes = [os.path.getsize(f) / 1024 for f in files]  # Convert to KB
+            
+            fig = px.histogram(
+                x=sizes,
+                nbins=10,
+                title="File Size Distribution (KB)"
+            )
+            fig.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No storage data available")
+
+def show_configuration_page():
+    """Enhanced configuration page with theme settings and preferences."""
+    st.markdown("""
+    <div class="main-header">
+        <h1>⚙️ Settings & Configuration</h1>
+        <p>Customize your KnowledgeHub experience</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Initialize database manager for preferences
+    db_manager = DatabaseManager()
+    
+    # Theme and UI Settings
+    st.markdown("### 🎨 Theme & Appearance")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("### 📈 File Creation Timeline")
+        # Dark mode toggle
+        current_theme = db_manager.get_preference('theme', 'light')
+        dark_mode = st.checkbox("🌙 Dark Mode", value=(current_theme == 'dark'))
         
-        # Prepare data for timeline chart
-        dates = [datetime.fromtimestamp(os.path.getmtime(f)).date() for f in files]
-        date_counts = pd.Series(dates).value_counts().sort_index()
-        
-        fig = px.line(
-            x=date_counts.index, 
-            y=date_counts.values,
-            title="Files Created Over Time",
-            labels={'x': 'Date', 'y': 'Files Created'}
-        )
-        fig.update_layout(
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        if dark_mode != (current_theme == 'dark'):
+            new_theme = 'dark' if dark_mode else 'light'
+            db_manager.set_preference('theme', new_theme)
+            
+            # Apply dark mode CSS
+            if dark_mode:
+                st.markdown("""
+                <style>
+                .stApp {
+                    background-color: #1e1e1e;
+                    color: #ffffff;
+                }
+                .main-header {
+                    background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+                }
+                .stat-card {
+                    background: linear-gradient(135deg, #3d3d3d 0%, #2a2a2a 100%);
+                }
+                </style>
+                """, unsafe_allow_html=True)
+            
+            st.success(f"Theme changed to {'Dark' if dark_mode else 'Light'} mode!")
+            st.info("🔄 Refresh the page to see full theme changes.")
     
     with col2:
-        st.markdown("### 📊 File Size Distribution")
-        
-        # File size histogram
-        sizes = [os.path.getsize(f) / 1024 for f in files]  # Convert to KB
-        
-        fig = px.histogram(
-            x=sizes,
-            nbins=10,
-            title="File Size Distribution (KB)",
-            labels={'x': 'File Size (KB)', 'y': 'Count'}
+        # Default view preferences  
+        default_view = db_manager.get_preference('default_view', 'list')
+        view_pref = st.selectbox(
+            "📋 Default File View", 
+            options=['list', 'grid'],
+            index=0 if default_view == 'list' else 1,
+            format_func=lambda x: 'List View' if x == 'list' else 'Grid View'
         )
-        fig.update_layout(
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-def show_configuration_page():
-    st.markdown("# ⚙️ Configuration")
+        
+        if view_pref != default_view:
+            db_manager.set_preference('default_view', view_pref)
+            st.success(f"Default view set to {view_pref.title()} View!")
     
-    # Environment status
+    # Content Processing Settings
+    st.markdown("---")
+    st.markdown("### 🤖 AI Processing Settings")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Auto-tagging preference
+        auto_tag = db_manager.get_preference('auto_tagging', 'true') == 'true'
+        auto_tagging = st.checkbox("🏷️ Automatic Tag Generation", value=auto_tag)
+        
+        if auto_tagging != auto_tag:
+            db_manager.set_preference('auto_tagging', str(auto_tagging).lower())
+            st.success("Auto-tagging preference updated!")
+        
+        # Image processing preference
+        process_images = db_manager.get_preference('process_images', 'true') == 'true'
+        img_processing = st.checkbox("🖼️ Process Images in Articles", value=process_images)
+        
+        if img_processing != process_images:
+            db_manager.set_preference('process_images', str(img_processing).lower())
+            st.success("Image processing preference updated!")
+    
+    with col2:
+        # Summary length preference
+        summary_length = db_manager.get_preference('summary_length', 'medium')
+        length_pref = st.selectbox(
+            "📝 Summary Length",
+            options=['short', 'medium', 'long'],
+            index=['short', 'medium', 'long'].index(summary_length),
+            format_func=lambda x: f"{x.title()} (~{150 if x=='short' else 300 if x=='medium' else 500} words)"
+        )
+        
+        if length_pref != summary_length:
+            db_manager.set_preference('summary_length', length_pref)
+            st.success("Summary length preference updated!")
+        
+        # Language preference
+        language = db_manager.get_preference('language', 'english')
+        lang_pref = st.selectbox(
+            "🌍 Processing Language",
+            options=['english', 'spanish', 'french', 'german', 'chinese'],
+            index=['english', 'spanish', 'french', 'german', 'chinese'].index(language),
+            format_func=lambda x: x.title()
+        )
+        
+        if lang_pref != language:
+            db_manager.set_preference('language', lang_pref)
+            st.success("Language preference updated!")
+    
+    # Environment Status
+    st.markdown("---")
     st.markdown("### 🌍 Environment Status")
     
     col1, col2 = st.columns(2)
@@ -923,10 +1332,16 @@ def show_configuration_page():
         mode = "🎮 Demo Mode" if DEMO_MODE else "🚀 Full Mode"
         st.info(f"**Current Mode:** {mode}")
         
-        interface = "🌐 Streamlit Web Interface"
-        st.info(f"**Interface:** {interface}")
+        # Database status
+        try:
+            stats = db_manager.get_content_stats()
+            db_status = f"✅ Connected ({stats.get('total_count', 0)} items)"
+        except:
+            db_status = "❌ Connection Error"
+        st.info(f"**Database:** {db_status}")
     
     # Configuration details
+    st.markdown("---")
     st.markdown("### 📋 Current Configuration")
     
     config_data = {
@@ -934,15 +1349,230 @@ def show_configuration_page():
         "OpenAI Model": "GPT-5 (Demo Mode)" if DEMO_MODE else "GPT-5 Mini",
         "Whisper Model": "medium (Demo Mode)" if DEMO_MODE else "medium",
         "Date Format": "%Y-%m-%d %H:%M",
-        "Filename Template": "{title}.md"
+        "Filename Template": "{title}.md",
+        "Theme": db_manager.get_preference('theme', 'light').title(),
+        "Auto-tagging": "Enabled" if db_manager.get_preference('auto_tagging', 'true') == 'true' else "Disabled",
+        "Default View": db_manager.get_preference('default_view', 'list').title()
     }
     
     for key, value in config_data.items():
         st.text(f"{key}: {value}")
     
+    # RSS Feed Management
     st.markdown("---")
+    st.markdown("### 📡 RSS Feed Management")
+    
+    feed_manager = FeedManager(db_manager)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**📋 Current Feeds**")
+        feeds = feed_manager.get_feeds()
+        
+        if feeds:
+            for i, feed in enumerate(feeds):
+                with st.container():
+                    st.markdown(f"""
+                    **{feed['name']}**  
+                    🔗 {feed['url'][:50]}{'...' if len(feed['url']) > 50 else ''}  
+                    ⚙️ Auto-process: {'✅' if feed.get('auto_process') else '❌'}
+                    """)
+                    
+                    if not DEMO_MODE and st.button(f"🗑️ Remove", key=f"remove_feed_{i}"):
+                        if feed_manager.remove_feed(feed['url']):
+                            st.success(f"Removed feed: {feed['name']}")
+                            st.rerun()
+        else:
+            st.info("No RSS feeds configured yet")
+        
+        # Feed stats
+        if not DEMO_MODE:
+            feed_stats = feed_manager.get_feed_stats()
+            st.markdown(f"""
+            **📊 Feed Statistics:**
+            - Total items: {feed_stats.get('total_feed_items', 0)}
+            - Configured feeds: {feed_stats.get('feeds_configured', 0)}
+            """)
+    
+    with col2:
+        st.markdown("**➕ Add New Feed**")
+        
+        new_feed_url = st.text_input(
+            "RSS Feed URL", 
+            placeholder="https://example.com/rss.xml",
+            key="new_feed_url"
+        )
+        
+        new_feed_name = st.text_input(
+            "Feed Name (optional)", 
+            placeholder="My Blog Feed",
+            key="new_feed_name"
+        )
+        
+        auto_process = st.checkbox("Auto-process new items", value=True, key="auto_process_feed")
+        max_items = st.number_input("Max items to process", min_value=1, max_value=50, value=10, key="max_feed_items")
+        
+        if st.button("🔍 Validate Feed", key="validate_feed"):
+            if new_feed_url:
+                validation = feed_manager.validate_feed_url(new_feed_url)
+                if validation['valid']:
+                    st.success(f"✅ Valid feed: {validation['title']}")
+                    st.info(f"Found {validation.get('items_count', 0)} items")
+                else:
+                    st.error(f"❌ Invalid feed: {validation['error']}")
+            else:
+                st.warning("Please enter a feed URL")
+        
+        if st.button("➕ Add Feed", key="add_feed"):
+            if new_feed_url:
+                if not DEMO_MODE:
+                    result = feed_manager.add_feed(new_feed_url, new_feed_name, auto_process, max_items)
+                    if result['success']:
+                        st.success(f"✅ Added feed: {result['feed_name']}")
+                        st.info(f"Processed {result.get('items_processed', 0)} items")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Failed to add feed: {result['error']}")
+                else:
+                    st.success("✅ Demo: Feed would be added in full mode")
+            else:
+                st.warning("Please enter a feed URL")
+        
+        if st.button("🔄 Update All Feeds", key="update_feeds"):
+            if not DEMO_MODE:
+                with st.spinner("Updating feeds..."):
+                    results = feed_manager.update_all_feeds()
+                    st.success(f"Updated {results['feeds_updated']} feeds, processed {results['items_processed']} items")
+                    if results['errors'] > 0:
+                        st.warning(f"Encountered {results['errors']} errors")
+            else:
+                st.success("✅ Demo: Feeds would be updated in full mode")
+    
+    # Internal Linking Management
+    st.markdown("---")
+    st.markdown("### 🔗 Internal Linking")
+    
+    internal_linker = InternalLinker(db_manager)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**🔧 Link Management**")
+        
+        if st.button("🔄 Update All Internal Links", key="update_internal_links"):
+            if not DEMO_MODE:
+                with st.spinner("Updating internal links..."):
+                    results = internal_linker.update_all_internal_links()
+                    st.success(f"Updated: {results['updated']}, Skipped: {results['skipped']}")
+                    if results['errors'] > 0:
+                        st.warning(f"Errors: {results['errors']}")
+            else:
+                st.success("✅ Demo: Internal links would be updated in full mode")
+        
+        if st.button("🔍 Find Broken Links", key="find_broken_links"):
+            if not DEMO_MODE:
+                broken_links = internal_linker.find_broken_links()
+                if broken_links:
+                    st.warning(f"Found {len(broken_links)} broken links")
+                    for link in broken_links[:5]:  # Show first 5
+                        st.text(f"• {link['source_title']}: '{link['broken_link']}'")
+                else:
+                    st.success("No broken links found!")
+            else:
+                st.success("✅ Demo: Would check for broken links in full mode")
+    
+    with col2:
+        st.markdown("**📊 Linking Statistics**")
+        
+        if not DEMO_MODE:
+            all_content = db_manager.get_all_content()
+            total_content = len(all_content)
+            
+            # Count content with potential links (basic estimation)
+            linked_content = sum(1 for content in all_content if content.get('tags'))
+            
+            st.metric("Total Content", total_content)
+            st.metric("Tagged Content", linked_content)
+            st.metric("Link Potential", f"{(linked_content/max(total_content,1)*100):.0f}%")
+        else:
+            st.metric("Total Content", "42")
+            st.metric("Tagged Content", "28") 
+            st.metric("Link Potential", "67%")
+        
+        st.markdown("**⚙️ Linking Settings**")
+        
+        min_similarity = st.slider(
+            "Minimum similarity for auto-linking",
+            min_value=0.1,
+            max_value=1.0,
+            value=0.3,
+            step=0.1,
+            key="min_similarity"
+        )
+        
+        max_links = st.number_input(
+            "Max links per document",
+            min_value=1,
+            max_value=20,
+            value=5,
+            key="max_links"
+        )
+    
+    # Data Management
+    st.markdown("---")
+    st.markdown("### 🗂️ Data Management")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("📤 Export Settings", type="secondary"):
+            try:
+                # Export all preferences
+                preferences = {}
+                for key in ['theme', 'default_view', 'auto_tagging', 'process_images', 'summary_length', 'language']:
+                    preferences[key] = db_manager.get_preference(key, '')
+                
+                st.download_button(
+                    label="⬇️ Download Settings JSON",
+                    data=pd.DataFrame([preferences]).to_json(orient='records'),
+                    file_name="knowledgehub_settings.json",
+                    mime="application/json"
+                )
+            except Exception as e:
+                st.error(f"Export failed: {str(e)}")
+    
+    with col2:
+        if st.button("🔄 Reset to Defaults", type="secondary"):
+            try:
+                # Reset key preferences
+                defaults = {
+                    'theme': 'light',
+                    'default_view': 'list', 
+                    'auto_tagging': 'true',
+                    'process_images': 'true',
+                    'summary_length': 'medium',
+                    'language': 'english'
+                }
+                
+                for key, value in defaults.items():
+                    db_manager.set_preference(key, value)
+                
+                st.success("Settings reset to defaults!")
+                st.info("🔄 Refresh the page to see changes.")
+            except Exception as e:
+                st.error(f"Reset failed: {str(e)}")
+    
+    with col3:
+        if st.button("📊 Database Info", type="secondary"):
+            try:
+                stats = db_manager.get_content_stats()
+                st.json(stats)
+            except Exception as e:
+                st.error(f"Could not retrieve database info: {str(e)}")
     
     # Help section
+    st.markdown("---")
     st.markdown("### 📚 Configuration Help")
     
     with st.expander("🔑 Setting up OpenAI API Key"):
@@ -961,7 +1591,21 @@ def show_configuration_page():
         {get_vault_path()}
         ```
         
-        All processed content is saved here as markdown files.
+        All processed content is saved here as markdown files with a SQLite database for metadata.
+        """)
+    
+    with st.expander("🎨 Theme Customization"):
+        st.markdown("""
+        **Dark Mode Benefits:**
+        - Reduced eye strain in low light
+        - Better for OLED displays
+        - Modern, professional appearance
+        
+        **Theme applies to:**
+        - Background colors
+        - Text colors
+        - Card and component styling
+        - Chart and visualization themes
         """)
     
     with st.expander("🚀 Running the Application"):
@@ -975,6 +1619,19 @@ def show_configuration_page():
         ```bash
         python src/hub.py
         ```
+        """)
+    
+    with st.expander("🆕 New Features"):
+        st.markdown("""
+        **Recent Enhancements:**
+        - 📁 File upload for PDFs, documents, images, spreadsheets
+        - 🏷️ Tag management system with add/remove functionality
+        - 🗄️ SQLite database for improved efficiency
+        - 🌙 Dark mode theme
+        - 💬 Chat interface for natural language queries
+        - 📊 Enhanced analytics with tag cloud and heatmap
+        - 🔗 Automatic internal linking (coming soon)
+        - 📡 RSS/Newsletter integration (coming soon)
         """)
 
 def process_content_with_error_handling(url):
@@ -1232,6 +1889,281 @@ def confirm_delete_file(file_info):
             if confirm_key in st.session_state:
                 del st.session_state[confirm_key]
             return False
+
+def show_upload_files_page():
+    """Display file upload interface for various document types."""
+    st.markdown("""
+    <div class="main-header">
+        <h1>📁 Upload Documents</h1>
+        <p>Upload PDFs, documents, images, spreadsheets, and more for AI processing</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Initialize database manager and file processor
+    db_manager = DatabaseManager()
+    file_processor = FileProcessor()
+    
+    # File upload section
+    st.markdown("### Upload Files")
+    
+    # Support multiple file types
+    supported_extensions = file_processor.get_supported_extensions()
+    uploaded_files = st.file_uploader(
+        "Choose files to upload",
+        type=[ext.lstrip('.') for ext in supported_extensions],
+        accept_multiple_files=True,
+        help=f"Supported formats: {', '.join(supported_extensions)}"
+    )
+    
+    if uploaded_files:
+        st.markdown(f"### Processing {len(uploaded_files)} file(s)")
+        
+        # Process each uploaded file
+        for uploaded_file in uploaded_files:
+            with st.container():
+                st.markdown(f"#### 📄 {uploaded_file.name}")
+                
+                # Show file info
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.info(f"**Size:** {format_file_size(uploaded_file.size)}")
+                with col2:
+                    file_type = file_processor.get_file_type(uploaded_file.name)
+                    st.info(f"**Type:** {file_type.title()}")
+                with col3:
+                    st.info(f"**Format:** {uploaded_file.type}")
+                
+                # Process button for each file
+                if st.button(f"Process {uploaded_file.name}", key=f"process_{uploaded_file.name}"):
+                    
+                    if not DEMO_MODE:
+                        # Save uploaded file temporarily
+                        vault_path = get_vault_path()
+                        os.makedirs(vault_path, exist_ok=True)
+                        
+                        temp_path = os.path.join(vault_path, uploaded_file.name)
+                        with open(temp_path, "wb") as f:
+                            f.write(uploaded_file.getvalue())
+                        
+                        try:
+                            # Process the file
+                            with st.spinner(f"Processing {uploaded_file.name}..."):
+                                result = file_processor.process_file(temp_path, uploaded_file.name.split('.')[0])
+                                
+                                if result.get('error'):
+                                    st.error(f"❌ Processing failed: {result['error']}")
+                                else:
+                                    # Summarize content using AI
+                                    if result['content']:
+                                        summary = summarize_text(
+                                            result['content'], 
+                                            result['title'],
+                                            f"File type: {result['file_type']}. Metadata: {result.get('metadata', {})}"
+                                        )
+                                        
+                                        # Save as markdown
+                                        markdown_file = save_as_markdown(
+                                            summary, 
+                                            result['title'], 
+                                            f"file://{temp_path}",
+                                            metadata=result.get('metadata', {})
+                                        )
+                                        
+                                        # Add to database
+                                        db_manager.add_content(
+                                            file_path=markdown_file,
+                                            title=result['title'],
+                                            content_type=result['file_type'],
+                                            source_url=f"file://{temp_path}",
+                                            summary=summary,
+                                            word_count=result.get('word_count', 0)
+                                        )
+                                        
+                                        st.success(f"✅ Successfully processed {uploaded_file.name}")
+                                        
+                                        # Show results
+                                        with st.expander(f"📖 Summary for {result['title']}", expanded=True):
+                                            st.markdown(summary)
+                                        
+                                        # Show metadata if available
+                                        if result.get('metadata'):
+                                            with st.expander("📊 File Metadata"):
+                                                st.json(result['metadata'])
+                                    else:
+                                        st.warning("⚠️ No content could be extracted from this file")
+                        
+                        except Exception as e:
+                            st.error(f"❌ Error processing file: {str(e)}")
+                        finally:
+                            # Clean up temporary file
+                            if os.path.exists(temp_path):
+                                os.remove(temp_path)
+                    
+                    else:
+                        # Demo mode processing
+                        with st.spinner(f"Processing {uploaded_file.name}..."):
+                            result = file_processor.process_file("demo_path", uploaded_file.name.split('.')[0])
+                            st.success(f"✅ Demo: Successfully processed {uploaded_file.name}")
+                            
+                            with st.expander(f"📖 Demo Summary for {result['title']}", expanded=True):
+                                st.markdown("""
+                                ### Demo Summary
+                                This is a demonstration of file processing capabilities. In full mode:
+                                - Text is extracted from PDFs and documents
+                                - Data is analyzed from spreadsheets  
+                                - Images are processed for content recognition
+                                - AI generates summaries and tags
+                                - Content is saved to your knowledge vault
+                                """)
+                
+                st.markdown("---")
+    
+    # Show supported file types
+    st.markdown("### 📋 Supported File Types")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown("""
+        **📄 Documents**
+        - PDF files (.pdf)
+        - Word documents (.docx)
+        - Text files (.txt, .md)
+        """)
+    
+    with col2:
+        st.markdown("""
+        **📊 Spreadsheets**
+        - Excel files (.xlsx, .xls)
+        - CSV files (.csv)
+        """)
+    
+    with col3:
+        st.markdown("""
+        **🖼️ Images**
+        - JPEG (.jpg, .jpeg)
+        - PNG (.png)
+        - GIF (.gif)
+        - WebP (.webp)
+        """)
+    
+    with col4:
+        st.markdown("""
+        **🎯 Processing**
+        - Text extraction
+        - AI summarization
+        - Tag generation
+        - Metadata extraction
+        """)
+
+def show_chat_page():
+    """Display chat interface for querying knowledge vault."""
+    st.markdown("""
+    <div class="main-header">
+        <h1>💬 Knowledge Chat</h1>
+        <p>Ask questions about your knowledge vault in natural language</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if DEMO_MODE:
+        st.warning("🚧 Chat functionality requires OpenAI API key. Currently in demo mode.")
+        
+        st.markdown("### Demo Chat Interface")
+        user_question = st.text_input("Ask a question about your knowledge:", placeholder="What are the main themes in my saved articles?")
+        
+        if user_question:
+            st.markdown("#### 🤖 AI Response:")
+            st.markdown("""
+            **Demo Response:** This is a demonstration of the chat feature. In full mode, the AI would:
+            
+            1. Search through your knowledge vault
+            2. Find relevant content based on your question
+            3. Generate a comprehensive answer using context from your saved articles and documents
+            4. Provide citations and sources
+            
+            Your question: *"{}"*
+            
+            **Sample Answer:** Based on your knowledge vault, I found several articles discussing artificial intelligence, productivity tools, and knowledge management. The main themes include automated content processing, AI-powered summarization, and personal knowledge organization systems.
+            """.format(user_question))
+    else:
+        # Initialize database for searching
+        db_manager = DatabaseManager()
+        
+        # Chat interface
+        if "chat_messages" not in st.session_state:
+            st.session_state.chat_messages = []
+        
+        # Display chat history
+        for message in st.session_state.chat_messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+                if message.get("sources"):
+                    with st.expander("📚 Sources"):
+                        for source in message["sources"]:
+                            st.markdown(f"- [{source['title']}]({source['path']})")
+        
+        # Chat input
+        if prompt := st.chat_input("Ask me anything about your knowledge vault..."):
+            # Add user message
+            st.session_state.chat_messages.append({"role": "user", "content": prompt})
+            
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            
+            # Generate AI response
+            with st.chat_message("assistant"):
+                with st.spinner("Searching knowledge vault..."):
+                    try:
+                        # Search for relevant content
+                        search_results = db_manager.search_content(prompt)
+                        
+                        if search_results:
+                            # Prepare context from search results
+                            context_content = []
+                            sources = []
+                            
+                            for result in search_results[:5]:  # Top 5 results
+                                context_content.append(f"Title: {result['title']}\nSummary: {result.get('summary', 'No summary available')}")
+                                sources.append({'title': result['title'], 'path': result['file_path']})
+                            
+                            context = "\n\n---\n\n".join(context_content)
+                            
+                            # Generate response using OpenAI
+                            response_prompt = f"""
+                            Based on the following content from the user's knowledge vault, answer their question: "{prompt}"
+                            
+                            Context from knowledge vault:
+                            {context}
+                            
+                            Provide a helpful and accurate answer based on the available content. If the information is insufficient, say so.
+                            """
+                            
+                            ai_response = summarize_text(response_prompt, "Chat Response", "")
+                            
+                            st.markdown(ai_response)
+                            
+                            # Add assistant message with sources
+                            st.session_state.chat_messages.append({
+                                "role": "assistant", 
+                                "content": ai_response,
+                                "sources": sources
+                            })
+                            
+                            # Show sources
+                            if sources:
+                                with st.expander("📚 Sources"):
+                                    for source in sources:
+                                        st.markdown(f"- [{source['title']}]({source['path']})")
+                        
+                        else:
+                            response = "I couldn't find any relevant content in your knowledge vault to answer that question. Try asking about topics you've saved or uploading more content first."
+                            st.markdown(response)
+                            st.session_state.chat_messages.append({"role": "assistant", "content": response})
+                    
+                    except Exception as e:
+                        error_msg = f"Sorry, I encountered an error while searching: {str(e)}"
+                        st.error(error_msg)
+                        st.session_state.chat_messages.append({"role": "assistant", "content": error_msg})
 
 def get_vault_path():
     """Get the knowledge vault path."""
