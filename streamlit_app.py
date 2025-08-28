@@ -25,26 +25,54 @@ DEMO_MODE = not os.environ.get('OPENAI_API_KEY')
 if DEMO_MODE:
     # Demo mode - create mock functions
     def get_article_text(url):
-        return "This is demo content extracted from the article.", "Demo Article Title"
+        return {
+            'text': "This is demo content extracted from the article. It contains sample data and statistics for demonstration purposes.",
+            'title': "Demo Article Title",
+            'authors': ["Demo Author"],
+            'publish_date': datetime.now(),
+            'top_image': "https://example.com/demo-image.jpg",
+            'images': ["https://example.com/demo-image1.jpg", "https://example.com/demo-image2.jpg"],
+            'meta_description': "This is a demo article for testing the enhanced KnowledgeHub functionality.",
+            'meta_keywords': ["demo", "test", "knowledgehub"]
+        }
     
     def get_youtube_transcription(url):
         return "This is demo transcription content from the YouTube video.", "Demo YouTube Video Title"
     
-    def summarize_text(text, title):
+    def summarize_text(text, title, additional_context=""):
         return f"""# Summary for {title}
 
 ## Summary
-This is a demo summary of the content. In the real application, this would be generated using OpenAI's API to provide intelligent summarization of the article or video content.
+This is a demo summary of the content. In the real application, this would be generated using OpenAI's API to provide intelligent summarization of the article or video content with enhanced data extraction.
 
 ## Key Takeaways
 - Demo takeaway point 1
 - Demo takeaway point 2  
 - Demo takeaway point 3
 
-## Suggested Tags
-demo, test, knowledge-hub, ai, summarization"""
+## Data Insights
+| Metric | Value | Source |
+|--------|-------|--------|
+| Demo Stat 1 | 42% | Article analysis |
+| Demo Stat 2 | 1,234 | User survey |
+| Demo Stat 3 | 2025 | Publication year |
 
-    def save_as_markdown(content, title, url):
+## Visual Elements
+- Found 2 demo images related to the content
+- Suggested visualization: Bar chart showing key metrics
+- Recommended: Timeline of events mentioned in article
+
+## Suggested Tags
+demo, test, knowledge-hub, ai, summarization, data-extraction"""
+
+    def download_and_save_images(images, title, vault_path):
+        # Mock function for demo mode
+        return [
+            {'filename': 'demo_image1.jpg', 'path': '/demo/path/image1.jpg', 'url': 'https://example.com/image1.jpg'},
+            {'filename': 'demo_image2.jpg', 'path': '/demo/path/image2.jpg', 'url': 'https://example.com/image2.jpg'}
+        ]
+
+    def save_as_markdown(content, title, url, saved_images=None, metadata=None):
         # Create a demo knowledge vault
         vault_path = os.path.expanduser("~/KnowledgeHub")
         os.makedirs(vault_path, exist_ok=True)
@@ -537,7 +565,11 @@ def show_file_viewer(file_path):
             st.rerun()
     
     # View mode selector
-    view_mode = st.radio("View Mode", ["📖 Rendered", "📝 Raw Markdown"], horizontal=True)
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        view_mode = st.radio("View Mode", ["📖 Rendered", "📝 Raw Markdown"], horizontal=True)
+    with col2:
+        show_images = st.checkbox("🖼️ Show Images", value=True)
     
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -547,6 +579,28 @@ def show_file_viewer(file_path):
             st.markdown(content, unsafe_allow_html=True)
         else:
             st.code(content, language="markdown")
+        
+        # Show images if they exist and checkbox is checked
+        if show_images:
+            sanitized_title = re.sub(r'[\\/*?:"<>|]', "", filename.replace('.md', ''))
+            images_dir = os.path.join(os.path.dirname(file_path), f"{sanitized_title}_images")
+            
+            if os.path.exists(images_dir):
+                image_files = [f for f in os.listdir(images_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif'))]
+                
+                if image_files:
+                    st.markdown("---")
+                    st.markdown("### 🖼️ Associated Images")
+                    
+                    # Display images in a grid
+                    cols = st.columns(min(3, len(image_files)))
+                    for i, img_file in enumerate(image_files):
+                        with cols[i % 3]:
+                            img_path = os.path.join(images_dir, img_file)
+                            try:
+                                st.image(img_path, caption=img_file, use_container_width=True)
+                            except Exception as e:
+                                st.error(f"Could not display {img_file}: {e}")
         
         # Copy button
         if st.button("📋 Copy to Clipboard"):
@@ -748,43 +802,110 @@ def process_content(url):
             if "youtube.com" in url or "youtu.be" in url:
                 content, title = get_youtube_transcription(url)
                 content_type = "YouTube Video"
+                saved_images = []
+                metadata = {}
+                additional_context = "Content source: YouTube video transcription"
             else:
-                content, title = get_article_text(url)
-                content_type = "Web Article"
+                article_data = get_article_text(url)
+                if article_data:
+                    content = article_data['text']
+                    title = article_data['title']
+                    content_type = "Web Article"
+                    
+                    # Step 1.5: Download images
+                    status_text.text("📸 Downloading images...")
+                    progress_bar.progress(35)
+                    
+                    if not DEMO_MODE:
+                        from src.hub import download_and_save_images
+                        vault_path = get_vault_path()
+                        saved_images = download_and_save_images(article_data['images'], title, vault_path)
+                    else:
+                        saved_images = download_and_save_images(article_data['images'], title, "")
+                    
+                    # Prepare metadata
+                    metadata = {
+                        'authors': article_data['authors'],
+                        'publish_date': article_data['publish_date'],
+                        'meta_description': article_data['meta_description'],
+                        'meta_keywords': article_data['meta_keywords']
+                    }
+                    
+                    # Prepare additional context for AI
+                    additional_context = f"""
+                    Content source: Web article
+                    Number of images found: {len(article_data['images'])}
+                    Images downloaded: {len(saved_images)}
+                    Authors: {', '.join(article_data['authors']) if article_data['authors'] else 'Unknown'}
+                    Publication date: {article_data['publish_date'] if article_data['publish_date'] else 'Unknown'}
+                    Meta description: {article_data['meta_description'] if article_data['meta_description'] else 'None'}
+                    """
+                else:
+                    content, title = None, None
+                    saved_images = []
+                    metadata = {}
+                    additional_context = ""
             
             if not content or not title:
                 st.error("❌ Failed to extract content from URL")
                 return
             
-            # Step 2: Generate AI summary
-            status_text.text("🤖 Generating AI summary...")
+            # Step 2: Generate AI summary with enhanced data extraction
+            status_text.text("🤖 Generating AI summary with data insights...")
             progress_bar.progress(50)
             
-            summary = summarize_text(content, title)
+            summary = summarize_text(content, title, additional_context)
             
-            # Step 3: Save to knowledge vault
+            # Step 3: Save to knowledge vault with images and metadata
             status_text.text("💾 Saving to knowledge vault...")
             progress_bar.progress(75)
             
-            filepath = save_as_markdown(summary, title, url)
+            filepath = save_as_markdown(summary, title, url, saved_images, metadata)
             
             # Complete
             progress_bar.progress(100)
             status_text.text("✅ Processing complete!")
             
-            # Success message
-            st.markdown(f"""
-            <div class="success-message">
-                <h3>🎉 Content Processed Successfully!</h3>
-                <p><strong>Type:</strong> {content_type}</p>
-                <p><strong>Title:</strong> {title}</p>
-                <p><strong>Saved to:</strong> {os.path.basename(filepath)}</p>
-            </div>
-            """, unsafe_allow_html=True)
+            # Enhanced success message
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                st.markdown(f"""
+                <div class="success-message">
+                    <h3>🎉 Content Processed Successfully!</h3>
+                    <p><strong>Type:</strong> {content_type}</p>
+                    <p><strong>Title:</strong> {title}</p>
+                    <p><strong>Saved to:</strong> {os.path.basename(filepath) if filepath else 'Demo Mode'}</p>
+                </div>
+                """, unsafe_allow_html=True)
             
-            # Show preview
+            with col2:
+                if saved_images:
+                    st.markdown(f"""
+                    <div class="stats-box">
+                        <h4>📸 Visual Content</h4>
+                        <p>{len(saved_images)} images saved</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                if metadata and metadata.get('authors'):
+                    st.markdown(f"""
+                    <div class="stats-box">
+                        <h4>✍️ Author(s)</h4>
+                        <p>{', '.join(metadata['authors'])}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            # Show enhanced preview
             with st.expander("👁️ Preview Generated Content"):
                 st.markdown(summary)
+                
+            # Show extracted images if any
+            if saved_images:
+                with st.expander("📸 Extracted Images"):
+                    for img in saved_images:
+                        st.markdown(f"**{img['filename']}**")
+                        st.markdown(f"Source: [{img['url']}]({img['url']})")
+                        st.divider()
                 
         except Exception as e:
             st.error(f"❌ Error processing content: {str(e)}")

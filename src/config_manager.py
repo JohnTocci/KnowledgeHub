@@ -33,8 +33,8 @@ class Config:
                 "audio_codec": "mp3",
                 "audio_quality": "192"
             },
-            "summarization_prompt": "Analyze the following text from a source titled \"{title}\".\n\nTEXT:\n\"{text}\"\n\nBased on the text, please provide the following in a clear, well-structured format:\n1.  **Summary:** A concise summary of the main points.\n2.  **Key Takeaways:** A bulleted list of the most important insights or actionable items.\n3.  **Suggested Tags:** A short, comma-separated list of 3-5 relevant keywords or tags for categorization.",
-            "system_prompt": "You are a helpful assistant that summarizes content for a personal knowledge base."
+            "summarization_prompt": "Analyze the following text from a source titled \"{title}\".\n\nTEXT:\n\"{text}\"\n\nADDITIONAL CONTEXT:\n{context}\n\nBased on the text, please provide the following in a clear, well-structured format:\n1.  **Summary:** A concise summary of the main points.\n2.  **Key Takeaways:** A bulleted list of the most important insights or actionable items.\n3.  **Data Insights:** Extract any numerical data, statistics, dates, or quantifiable information and present as a table or list.\n4.  **Visual Elements:** If images were found, describe how they relate to the content and suggest relevant data visualizations.\n5.  **Suggested Tags:** A short, comma-separated list of 3-5 relevant keywords or tags for categorization.",
+            "system_prompt": "You are an advanced AI assistant that summarizes content for a personal knowledge base. You excel at extracting data insights, identifying visual patterns, and creating structured summaries that include both textual analysis and data visualization suggestions."
         }
         
         if config_path.exists():
