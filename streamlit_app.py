@@ -73,6 +73,44 @@ demo, test, knowledge-hub, ai, summarization, data-extraction"""
         ]
 
     def save_as_markdown(content, title, url, saved_images=None, metadata=None):
+        # Mock function for demo mode
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        markdown_content = f"""# {title}
+
+**Source:** [{url}]({url})
+**Date Processed:** {timestamp}
+
+---
+
+{content}
+"""
+        
+        # In demo mode, just return a fake filepath
+        filepath = f"/demo/vault/{title.replace(' ', '_')}.md"
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(markdown_content)
+        
+        return filepath
+    
+    # Import utility functions for demo mode too
+    from session_manager import SessionManager, URLHistory
+    from utils import (
+        validate_and_sanitize_url, detect_content_type, estimate_processing_time,
+        format_file_size, format_time_ago, ContentAnalyzer
+    )
+    
+    # Create instances for demo mode
+    session_manager = SessionManager()
+    url_history = URLHistory()
+    
+    def display_error(error, show_retry=False):
+        st.error(f"Demo Mode Error: {str(error)}")
+        return False if not show_retry else st.button("Retry")
+    
+    def get_error_recovery_suggestions(error):
+        return ["This is demo mode - errors are simulated", "Add your OpenAI API key for full functionality"]
         # Create a demo knowledge vault
         vault_path = os.path.expanduser("~/KnowledgeHub")
         os.makedirs(vault_path, exist_ok=True)
@@ -106,6 +144,13 @@ else:
             get_error_recovery_suggestions
         )
         from background_tasks import task_manager, run_with_progress
+        from session_manager import session_manager, url_history, show_session_statistics
+        from utils import (
+            validate_and_sanitize_url, detect_content_type, estimate_processing_time,
+            format_file_size, format_time_ago, ContentAnalyzer
+        )
+        # Initialize session manager
+        session_manager.initialize_session_state()
     except ImportError as e:
         st.error(f"Could not import required modules: {e}")
         st.error("Please check your installation and ensure all dependencies are installed.")
@@ -270,39 +315,114 @@ def show_add_content_page():
     </div>
     """, unsafe_allow_html=True)
     
-    # URL input form with improved validation
+    # URL input form with improved validation and suggestions
     with st.container():
         st.markdown("### Add New Content")
         
         col1, col2 = st.columns([4, 1])
         with col1:
+            # URL input with smart suggestions
             url = st.text_input(
                 "Content URL",
+                value=st.session_state.get('last_url_input', ''),
                 placeholder="https://example.com/article or https://youtube.com/watch?v=...",
                 help="Enter a web article URL or YouTube video link"
             )
+            
+            # Store the current input
+            st.session_state.last_url_input = url
+            
+            # Show URL suggestions if user has history
+            if url and len(url) > 5:
+                suggestions = url_history.get_url_suggestions(url)
+                if suggestions:
+                    st.markdown("**Similar URLs from history:**")
+                    for suggestion in suggestions[:3]:
+                        if st.button(f"🔗 {suggestion[:50]}...", key=f"suggestion_{hash(suggestion)}"):
+                            st.session_state.last_url_input = suggestion
+                            st.rerun()
+            
         with col2:
             st.markdown("<br>", unsafe_allow_html=True)  # Spacing
             process_btn = st.button("Process Content", type="primary", use_container_width=True)
+    
+    # Show content type detection and time estimate
+    if url:
+        clean_url, is_valid = validate_and_sanitize_url(url)
+        if is_valid:
+            content_type = detect_content_type(clean_url)
+            time_estimate = estimate_processing_time(clean_url)
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.info(f"**Type:** {content_type.title()}")
+            with col2:
+                st.info(f"**Est. Time:** {time_estimate['min']}-{time_estimate['max']}s")
+            with col3:
+                if content_type == 'youtube':
+                    st.info("**Audio:** Will be transcribed")
+                else:
+                    st.info("**Text:** Will be extracted")
+        elif url.strip():
+            st.warning("⚠️ URL format appears invalid")
     
     # Process content when button is clicked with improved error handling
     if process_btn:
         if not url:
             st.error("**Error:** Please enter a URL to process.")
         else:
-            # Validate URL before processing
-            try:
-                validated_url = validate_url(url) if not DEMO_MODE else url
-                process_content_with_error_handling(validated_url)
-            except ValidationError as e:
-                display_error(e)
+            # Validate and clean URL
+            clean_url, is_valid = validate_and_sanitize_url(url)
+            if not is_valid:
+                st.error("**Error:** Invalid URL format. Please check and try again.")
+                st.info("**Examples:**\n- https://www.example.com/article\n- https://youtube.com/watch?v=abc123")
+            else:
+                # Add to URL history
+                url_history.add_url(clean_url)
                 
-                # Show suggestions
-                suggestions = get_error_recovery_suggestions(e)
-                if suggestions:
-                    with st.expander("Suggestions"):
-                        for suggestion in suggestions:
-                            st.write(f"• {suggestion}")
+                # Process with enhanced error handling
+                try:
+                    process_content_with_error_handling(clean_url)
+                    session_manager.add_to_processing_history(clean_url, "Processing...", "success")
+                    session_manager.update_counters(success=True)
+                except Exception as e:
+                    session_manager.add_to_processing_history(clean_url, "Failed", "error")
+                    session_manager.update_counters(error=True)
+                    display_error(e)
+                    
+                    # Show suggestions
+                    suggestions = get_error_recovery_suggestions(e)
+                    if suggestions:
+                        with st.expander("💡 Suggestions"):
+                            for suggestion in suggestions:
+                                st.write(f"• {suggestion}")
+    
+    # Show recent activity in sidebar
+    with st.sidebar:
+        if st.session_state.get('processing_history'):
+            st.markdown("---")
+            st.markdown("**Recent Activity**")
+            
+            # Show last 3 processed items
+            recent = session_manager.get_processing_history(limit=3)
+            for entry in reversed(recent):
+                status_icon = "✅" if entry['status'] == 'success' else "❌"
+                timestamp = datetime.fromisoformat(entry['timestamp'])
+                time_ago = format_time_ago(timestamp)
+                
+                with st.container():
+                    st.write(f"{status_icon} {entry['title'][:30]}...")
+                    st.caption(f"{time_ago}")
+            
+            # Show session stats
+            stats = session_manager.get_statistics()
+            if stats['total_processed'] > 0:
+                st.markdown("**Session Stats**")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Processed", stats['total_processed'])
+                with col2:
+                    st.metric("Success", f"{stats['success_rate']:.0f}%")
     
     # Professional feature showcase
     st.markdown("---")
@@ -955,7 +1075,7 @@ def process_content_with_error_handling(url):
 
 
 def display_success_result(result):
-    """Display successful processing results."""
+    """Display successful processing results with enhanced information."""
     st.markdown(f"""
     <div class="success-message">
         <h3>Content Processed Successfully</h3>
@@ -965,28 +1085,80 @@ def display_success_result(result):
     </div>
     """, unsafe_allow_html=True)
     
+    # Analyze content and show insights
+    if result.get('summary'):
+        analyzer = ContentAnalyzer()
+        content_stats = analyzer.count_elements(result['summary'])
+        reading_time = analyzer.estimate_reading_time(result['summary'])
+        
+        # Show content analysis
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Words", content_stats['words'])
+        with col2:
+            st.metric("Read Time", f"{reading_time} min")
+        with col3:
+            st.metric("Paragraphs", content_stats['paragraphs'])
+        with col4:
+            if result['saved_images']:
+                st.metric("Images", len(result['saved_images']))
+            else:
+                st.metric("Images", 0)
+    
     # Show additional details
     col1, col2 = st.columns([2, 1])
     
     with col1:
         if result['saved_images']:
-            st.success(f"Downloaded {len(result['saved_images'])} images")
+            st.success(f"✅ Downloaded {len(result['saved_images'])} images")
         
         if result['metadata'] and result['metadata'].get('authors'):
-            st.info(f"Authors: {', '.join(result['metadata']['authors'])}")
+            st.info(f"👤 Authors: {', '.join(result['metadata']['authors'])}")
+        
+        if result['metadata'] and result['metadata'].get('publish_date'):
+            st.info(f"📅 Published: {result['metadata']['publish_date']}")
     
     with col2:
-        if st.button("View Content", type="secondary"):
-            with st.expander("Generated Summary", expanded=True):
-                st.markdown(result['summary'])
+        # Action buttons
+        if st.button("📖 View Summary", type="secondary", use_container_width=True):
+            st.session_state.show_content_preview = True
         
-        if result['saved_images']:
-            if st.button("Show Images", type="secondary"):
-                with st.expander("Downloaded Images", expanded=True):
-                    for img in result['saved_images']:
-                        st.markdown(f"**{img['filename']}**")
-                        st.markdown(f"Source: [{img['url']}]({img['url']})")
-                        st.divider()
+        if result['saved_images'] and st.button("🖼️ View Images", type="secondary", use_container_width=True):
+            st.session_state.show_images_preview = True
+        
+        if result['filepath'] and st.button("📁 Open Folder", type="secondary", use_container_width=True):
+            st.info(f"File saved to: {os.path.dirname(result['filepath'])}")
+    
+    # Expandable content sections
+    if st.session_state.get('show_content_preview', False):
+        with st.expander("📖 Generated Summary", expanded=True):
+            st.markdown(result['summary'])
+            
+            # Add copy button functionality via text area
+            st.text_area("Copy text from here:", result['summary'], height=200, key="summary_copy")
+    
+    if st.session_state.get('show_images_preview', False) and result['saved_images']:
+        with st.expander("🖼️ Downloaded Images", expanded=True):
+            for i, img in enumerate(result['saved_images']):
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    st.markdown(f"**Image {i+1}**")
+                    st.caption(f"File: {img['filename']}")
+                with col2:
+                    st.markdown(f"Source: [{img['url']}]({img['url']})")
+                    if os.path.exists(img['path']):
+                        try:
+                            st.image(img['path'], width=200)
+                        except Exception:
+                            st.text("Preview not available")
+                st.divider()
+    
+    # Clear preview states
+    if st.button("🔄 Process Another URL", type="primary"):
+        st.session_state.show_content_preview = False
+        st.session_state.show_images_preview = False
+        st.session_state.last_url_input = ""
+        st.rerun()
 
 
 def process_content(url):
