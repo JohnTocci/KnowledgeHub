@@ -316,35 +316,106 @@ class DatabaseManager:
             return {}
     
     def search_content(self, query: str, search_type: str = 'all') -> List[Dict]:
-        """Search content by title, tags, or summary."""
+        """Enhanced search content by title, tags, summary, and key takeaways with improved matching."""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
-                query_lower = f'%{query.lower()}%'
+                # Tokenize query for better matching
+                query_words = [word.strip().lower() for word in query.split() if len(word.strip()) > 2]
+                if not query_words:
+                    # If no meaningful words, fall back to original query
+                    query_words = [query.lower()]
                 
                 if search_type == 'title':
-                    sql = 'SELECT * FROM content_metadata WHERE LOWER(title) LIKE ? ORDER BY created_date DESC'
-                    params = [query_lower]
+                    conditions = []
+                    params = []
+                    for word in query_words:
+                        conditions.append('LOWER(title) LIKE ?')
+                        params.append(f'%{word}%')
+                    
+                    sql = f'SELECT * FROM content_metadata WHERE {" OR ".join(conditions)} ORDER BY created_date DESC'
+                    
                 elif search_type == 'tags':
-                    sql = '''
+                    conditions = []
+                    params = []
+                    for word in query_words:
+                        conditions.append('LOWER(t.tag_name) LIKE ?')
+                        params.append(f'%{word}%')
+                    
+                    sql = f'''
                         SELECT DISTINCT cm.* FROM content_metadata cm
                         JOIN content_tags ct ON cm.id = ct.content_id
                         JOIN tags t ON ct.tag_id = t.id
-                        WHERE LOWER(t.tag_name) LIKE ?
+                        WHERE {" OR ".join(conditions)}
                         ORDER BY cm.created_date DESC
                     '''
-                    params = [query_lower]
-                else:  # all
-                    sql = '''
-                        SELECT * FROM content_metadata 
-                        WHERE LOWER(title) LIKE ? OR LOWER(summary) LIKE ? OR LOWER(tags) LIKE ?
-                        ORDER BY created_date DESC
+                    
+                else:  # Enhanced 'all' search
+                    conditions = []
+                    params = []
+                    
+                    for word in query_words:
+                        word_pattern = f'%{word}%'
+                        # Search in multiple fields with OR logic per word
+                        word_conditions = [
+                            'LOWER(title) LIKE ?',
+                            'LOWER(summary) LIKE ?',
+                            'LOWER(tags) LIKE ?',
+                            'LOWER(key_takeaways) LIKE ?',
+                            'LOWER(author) LIKE ?'
+                        ]
+                        conditions.append(f'({" OR ".join(word_conditions)})')
+                        params.extend([word_pattern] * len(word_conditions))
+                    
+                    # Use AND logic between different words for more precise results
+                    sql = f'''
+                        SELECT *, 
+                        (CASE 
+                            WHEN LOWER(title) LIKE ? THEN 10
+                            WHEN LOWER(summary) LIKE ? THEN 5
+                            WHEN LOWER(tags) LIKE ? THEN 8
+                            WHEN LOWER(key_takeaways) LIKE ? THEN 3
+                            ELSE 1
+                        END) as relevance_score
+                        FROM content_metadata 
+                        WHERE {" AND ".join(conditions)}
+                        ORDER BY relevance_score DESC, created_date DESC
                     '''
-                    params = [query_lower, query_lower, query_lower]
+                    
+                    # Add relevance scoring parameters
+                    first_word = query_words[0] if query_words else query.lower()
+                    relevance_params = [f'%{first_word}%'] * 4
+                    params = relevance_params + params
                 
                 cursor.execute(sql, params)
                 rows = cursor.fetchall()
+                
+                # If no results with AND logic, try with OR logic for broader search
+                if not rows and search_type == 'all' and len(query_words) > 1:
+                    conditions = []
+                    params = []
+                    
+                    for word in query_words:
+                        word_pattern = f'%{word}%'
+                        word_conditions = [
+                            'LOWER(title) LIKE ?',
+                            'LOWER(summary) LIKE ?',
+                            'LOWER(tags) LIKE ?',
+                            'LOWER(key_takeaways) LIKE ?',
+                            'LOWER(author) LIKE ?'
+                        ]
+                        conditions.extend(word_conditions)
+                        params.extend([word_pattern] * len(word_conditions))
+                    
+                    sql = f'''
+                        SELECT * FROM content_metadata 
+                        WHERE {" OR ".join(conditions)}
+                        ORDER BY created_date DESC
+                    '''
+                    
+                    cursor.execute(sql, params)
+                    rows = cursor.fetchall()
                 
                 return [self._row_to_dict(cursor, row) for row in rows]
                 

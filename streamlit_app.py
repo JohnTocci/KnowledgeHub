@@ -227,6 +227,33 @@ st.markdown("""
         box-shadow: 0 4px 20px rgba(0,0,0,0.1);
     }
     
+    .chat-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+        text-align: center;
+        color: white;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    
+    .chat-container {
+        background: #f8f9fa;
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border: 1px solid #e9ecef;
+    }
+    
+    .chat-message {
+        background: white;
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        border-left: 4px solid #667eea;
+    }
+    
     .feature-card {
         background: white;
         padding: 2rem;
@@ -297,8 +324,46 @@ st.markdown("""
         border-left: 3px solid #667eea;
     }
     
+    .tips-box {
+        background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    
+    .content-stats {
+        background: linear-gradient(135deg, #00b894 0%, #00a085 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        text-align: center;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    
     .sidebar .stSelectbox > div > div {
         background-color: #f0f0f0;
+    }
+    
+    /* Enhanced chat styling */
+    div[data-testid="stChatMessage"] {
+        background: white !important;
+        border-radius: 12px !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
+        margin: 0.5rem 0 !important;
+        border: 1px solid #e9ecef !important;
+    }
+    
+    div[data-testid="stChatMessage"][data-testid*="user"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+    }
+    
+    div[data-testid="stChatMessage"][data-testid*="assistant"] {
+        background: #f8f9fa !important;
+        border-left: 4px solid #667eea !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -328,23 +393,99 @@ def main():
             }
         )
         
-        # Demo mode indicator
+        # Demo mode indicator with enhanced styling
         if DEMO_MODE:
-            st.markdown('<div class="demo-banner"><strong>Demo Mode</strong><br>Add your OpenAI API key to enable full functionality</div>', unsafe_allow_html=True)
+            st.markdown("""
+            <div class="demo-banner">
+                <strong>🚧 Demo Mode Active</strong><br>
+                Add your OpenAI API key to enable full functionality
+                <br><small>Limited to basic features and sample data</small>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%); 
+                        color: white; padding: 0.8rem; border-radius: 8px; 
+                        text-align: center; margin: 1rem 0; font-size: 0.85rem;">
+                ✅ <strong>Full Mode Active</strong><br>
+                All features enabled
+            </div>
+            """, unsafe_allow_html=True)
         
-        # Quick stats
-        vault_path = get_vault_path()
-        if os.path.exists(vault_path):
-            files = glob.glob(os.path.join(vault_path, "*.md"))
-            total_size = sum(os.path.getsize(f) for f in files if os.path.isfile(f))
+        # Enhanced quick stats with database integration
+        st.markdown("---")
+        st.markdown("**📊 Knowledge Vault Overview**")
+        
+        try:
+            if not DEMO_MODE:
+                from database_manager import DatabaseManager
+                db_manager = DatabaseManager()
+                stats = db_manager.get_content_stats()
+                total_content = stats.get('total_count', 0)
+                content_types = stats.get('content_by_type', {})
+                top_tags = stats.get('top_tags', [])
+                
+                # Display content stats
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("📄 Items", total_content)
+                with col2:
+                    st.metric("🏷️ Tags", len(top_tags))
+                
+                if content_types:
+                    st.markdown("**Content Types:**")
+                    for content_type, count in content_types.items():
+                        st.markdown(f"• {content_type.title()}: {count}")
+                
+                if total_content > 0 and top_tags:
+                    st.markdown("**Top Tags:**")
+                    for tag in top_tags[:3]:
+                        st.markdown(f"• {tag['name']} ({tag['count']})")
+                        
+            else:
+                # Demo mode stats
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("📄 Items", "42")
+                with col2:
+                    st.metric("🏷️ Tags", "18")
+                st.markdown("**Content Types:**")
+                st.markdown("• Articles: 28")
+                st.markdown("• Videos: 14")
+                
+        except Exception as e:
+            # Fallback to file-based stats
+            vault_path = get_vault_path()
+            if os.path.exists(vault_path):
+                files = glob.glob(os.path.join(vault_path, "*.md"))
+                total_size = sum(os.path.getsize(f) for f in files if os.path.isfile(f))
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("📄 Files", len(files))
+                with col2:
+                    st.metric("💾 Size", f"{total_size / (1024*1024):.1f} MB")
+        
+        # Quick action buttons
+        st.markdown("---")
+        st.markdown("**⚡ Quick Actions**")
+        
+        if st.button("🔍 Search Content", use_container_width=True):
+            st.session_state.nav_override = "Chat"
+            st.rerun()
             
-            st.markdown("---")
-            st.markdown("**Quick Overview**")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Files", len(files))
-            with col2:
-                st.metric("Size", f"{total_size / (1024*1024):.1f} MB")
+        if st.button("📝 Add New Content", use_container_width=True):
+            st.session_state.nav_override = "Add Content"
+            st.rerun()
+            
+        if st.button("📊 View Analytics", use_container_width=True):
+            st.session_state.nav_override = "Analytics"
+            st.rerun()
+
+    # Handle navigation overrides from quick action buttons
+    if hasattr(st.session_state, 'nav_override'):
+        selected = st.session_state.nav_override
+        del st.session_state.nav_override
 
     # Main content area
     if selected == "Add Content":
@@ -2057,11 +2198,12 @@ def show_upload_files_page():
         """)
 
 def show_chat_page():
-    """Display chat interface for querying knowledge vault."""
+    """Display enhanced chat interface for querying knowledge vault."""
     st.markdown("""
-    <div class="main-header">
+    <div class="chat-header">
         <h1>💬 Knowledge Chat</h1>
         <p>Ask questions about your knowledge vault in natural language</p>
+        <p style="font-size: 0.9rem; opacity: 0.8;">Powered by intelligent search and AI reasoning</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -2088,6 +2230,53 @@ def show_chat_page():
     else:
         # Initialize database for searching
         db_manager = DatabaseManager()
+        
+        # Show vault statistics in sidebar or info box
+        with st.expander("📊 Knowledge Vault Status", expanded=False):
+            stats = db_manager.get_content_stats()
+            total_content = stats.get('total_count', 0)
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.markdown(f"""
+                <div class="content-stats">
+                    <h3>{total_content}</h3>
+                    <p>Total Items</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                content_types = stats.get('content_by_type', {})
+                type_count = len(content_types)
+                st.markdown(f"""
+                <div class="content-stats">
+                    <h3>{type_count}</h3>
+                    <p>Content Types</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col3:
+                top_tags = stats.get('top_tags', [])
+                tag_count = len(top_tags)
+                st.markdown(f"""
+                <div class="content-stats">
+                    <h3>{tag_count}</h3>
+                    <p>Unique Tags</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            if total_content == 0:
+                st.markdown("""
+                <div class="tips-box">
+                    <h4>🚀 Get Started</h4>
+                    <p>Your knowledge vault is empty. Add some content to start chatting!</p>
+                    <ul>
+                        <li>📝 Add articles and YouTube videos</li>
+                        <li>📁 Upload PDFs and documents</li>
+                        <li>🏷️ Use tags to organize content</li>
+                    </ul>
+                </div>
+                """, unsafe_allow_html=True)
         
         # Chat interface
         if "chat_messages" not in st.session_state:
@@ -2118,13 +2307,27 @@ def show_chat_page():
                         search_results = db_manager.search_content(prompt)
                         
                         if search_results:
-                            # Prepare context from search results
+                            # Prepare enhanced context from search results
                             context_content = []
                             sources = []
                             
-                            for result in search_results[:5]:  # Top 5 results
-                                context_content.append(f"Title: {result['title']}\nSummary: {result.get('summary', 'No summary available')}")
-                                sources.append({'title': result['title'], 'path': result['file_path']})
+                            st.info(f"🔍 Found {len(search_results)} relevant items in your vault")
+                            
+                            for i, result in enumerate(search_results[:5]):  # Top 5 results
+                                # Enhanced context with more fields
+                                content_piece = f"""Title: {result['title']}
+Summary: {result.get('summary', 'No summary available')}
+Key Takeaways: {result.get('key_takeaways', 'Not available')}
+Tags: {result.get('tags', 'No tags')}
+Type: {result.get('content_type', 'Unknown')}"""
+                                
+                                context_content.append(content_piece)
+                                sources.append({
+                                    'title': result['title'], 
+                                    'path': result['file_path'],
+                                    'type': result.get('content_type', 'Unknown'),
+                                    'tags': result.get('tags', '')
+                                })
                             
                             context = "\n\n---\n\n".join(context_content)
                             
@@ -2135,7 +2338,7 @@ def show_chat_page():
                             Context from knowledge vault:
                             {context}
                             
-                            Provide a helpful and accurate answer based on the available content. If the information is insufficient, say so.
+                            Provide a helpful and comprehensive answer based on the available content. If you reference specific information, mention which source it comes from. If the information is insufficient, say so.
                             """
                             
                             ai_response = summarize_text(response_prompt, "Chat Response", "")
@@ -2149,14 +2352,52 @@ def show_chat_page():
                                 "sources": sources
                             })
                             
-                            # Show sources
+                            # Enhanced sources display
                             if sources:
-                                with st.expander("📚 Sources"):
-                                    for source in sources:
-                                        st.markdown(f"- [{source['title']}]({source['path']})")
+                                with st.expander(f"📚 Sources ({len(sources)} items found)"):
+                                    for i, source in enumerate(sources, 1):
+                                        col1, col2 = st.columns([3, 1])
+                                        with col1:
+                                            st.markdown(f"**{i}. {source['title']}**")
+                                            if source.get('tags'):
+                                                st.markdown(f"🏷️ *Tags: {source['tags']}*")
+                                        with col2:
+                                            st.markdown(f"📄 *{source.get('type', 'Unknown')}*")
+                                        
+                                        st.markdown(f"📁 `{source['path']}`")
+                                        if i < len(sources):
+                                            st.markdown("---")
                         
                         else:
-                            response = "I couldn't find any relevant content in your knowledge vault to answer that question. Try asking about topics you've saved or uploading more content first."
+                            # Enhanced fallback with helpful suggestions
+                            db_stats = db_manager.get_content_stats()
+                            total_content = db_stats.get('total_count', 0)
+                            top_tags = db_stats.get('top_tags', [])
+                            
+                            if total_content == 0:
+                                response = """I don't see any content in your knowledge vault yet! 🗂️
+                                
+To get started:
+1. 📝 **Add Content**: Use the "Add Content" page to save articles or YouTube videos
+2. 📁 **Upload Files**: Upload PDFs, documents, or other files
+3. 🏷️ **Tag Content**: Add relevant tags to make content easier to find
+
+Once you have some content saved, I'll be able to help you find information and answer questions!"""
+                            else:
+                                suggestion_tags = [tag['name'] for tag in top_tags[:5]]
+                                suggestions = ""
+                                if suggestion_tags:
+                                    suggestions = f"\n\n**Try asking about:** {', '.join(suggestion_tags)}"
+                                
+                                response = f"""I couldn't find specific content matching your question in your knowledge vault. 🔍
+
+**Your vault contains {total_content} items** - try being more specific or use different keywords.{suggestions}
+
+**Tips for better results:**
+- Use keywords from your saved content
+- Try broader terms if your search was very specific
+- Check the Browse page to see what content you have saved"""
+                            
                             st.markdown(response)
                             st.session_state.chat_messages.append({"role": "assistant", "content": response})
                     

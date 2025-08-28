@@ -183,3 +183,7 @@ cython_debug/
 # KnowledgeHub specific
 config.json
 temp_audio.mp3
+test_*.py
+*.db
+*.sqlite*
+/tmp/
