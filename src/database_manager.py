@@ -16,9 +16,9 @@ class DatabaseManager:
         """Initialize database manager with optional custom path."""
         if db_path is None:
             # Default to knowledge vault directory
-            from config_manager import ConfigManager
-            config = ConfigManager()
-            vault_path = config.get_knowledge_vault_path()
+            from config_manager import Config
+            config = Config()
+            vault_path = config.get_vault_path()
             db_path = os.path.join(vault_path, "knowledgehub.db")
         
         self.db_path = db_path
