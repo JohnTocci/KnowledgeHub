@@ -271,13 +271,16 @@ def show_browse_files_page():
         return
     
     # Search and filter options
-    col1, col2, col3 = st.columns([2, 1, 1])
+    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
     with col1:
         search_term = st.text_input("🔍 Search files", placeholder="Search by filename...")
     with col2:
         sort_by = st.selectbox("Sort by", ["Date (Newest)", "Date (Oldest)", "Name (A-Z)", "Name (Z-A)", "Size"])
     with col3:
         view_mode = st.selectbox("View", ["List", "Grid"])
+    with col4:
+        st.markdown("<br>", unsafe_allow_html=True)  # Spacing
+        bulk_delete_mode = st.checkbox("🗑️ Bulk Delete Mode")
     
     # Process files
     file_data = []
@@ -311,36 +314,114 @@ def show_browse_files_page():
     
     st.markdown(f"**Found {len(file_data)} files**")
     
+    # Bulk delete functionality
+    if bulk_delete_mode:
+        col1, col2, col3 = st.columns([1, 1, 2])
+        with col1:
+            if st.button("🗑️ Delete Selected", type="secondary", help="Delete all selected files"):
+                selected_files = [k for k, v in st.session_state.items() if k.startswith('delete_') and v]
+                if selected_files:
+                    delete_files = []
+                    for key in selected_files:
+                        file_name = key.replace('delete_', '')
+                        for file_info in file_data:
+                            if file_info['name'] == file_name:
+                                delete_files.append(file_info)
+                                break
+                    
+                    if delete_files:
+                        with st.spinner(f"Deleting {len(delete_files)} files..."):
+                            deleted_count = 0
+                            for file_info in delete_files:
+                                try:
+                                    os.remove(file_info['path'])
+                                    if f"delete_{file_info['name']}" in st.session_state:
+                                        del st.session_state[f"delete_{file_info['name']}"]
+                                    deleted_count += 1
+                                except Exception as e:
+                                    st.error(f"Error deleting {file_info['name']}: {e}")
+                        
+                        if deleted_count > 0:
+                            st.success(f"Successfully deleted {deleted_count} files!")
+                            st.rerun()
+                else:
+                    st.warning("No files selected for deletion")
+        
+        with col2:
+            if st.button("☑️ Select All"):
+                for file_info in file_data:
+                    st.session_state[f"delete_{file_info['name']}"] = True
+                st.rerun()
+        
+        with col3:
+            if st.button("🔄 Clear Selection"):
+                for file_info in file_data:
+                    if f"delete_{file_info['name']}" in st.session_state:
+                        del st.session_state[f"delete_{file_info['name']}"]
+                st.rerun()
+    
     # Display files
     if view_mode == "List":
         for file_info in file_data:
             with st.container():
-                col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
-                with col1:
+                if bulk_delete_mode:
+                    col1, col2, col3, col4, col5 = st.columns([0.5, 2.5, 1, 1, 1])
+                    with col1:
+                        st.checkbox("", key=f"delete_{file_info['name']}", label_visibility="collapsed")
+                else:
+                    col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
+                
+                with col1 if not bulk_delete_mode else col2:
                     st.markdown(f"**{file_info['name'].replace('.md', '')}**")
-                with col2:
+                with col2 if not bulk_delete_mode else col3:
                     st.text(f"{file_info['size_mb']:.2f} MB")
-                with col3:
+                with col3 if not bulk_delete_mode else col4:
                     st.text(file_info['modified'].strftime("%m/%d/%Y"))
-                with col4:
-                    if st.button("👁️ View", key=f"view_{file_info['name']}"):
-                        st.session_state.selected_file = file_info['path']
-                        st.rerun()
+                with col4 if not bulk_delete_mode else col5:
+                    if not bulk_delete_mode:
+                        subcol1, subcol2 = st.columns(2)
+                        with subcol1:
+                            if st.button("👁️ View", key=f"view_{file_info['name']}"):
+                                st.session_state.selected_file = file_info['path']
+                                st.rerun()
+                        with subcol2:
+                            if st.button("🗑️", key=f"single_delete_{file_info['name']}", help="Delete this file"):
+                                if confirm_delete_file(file_info):
+                                    st.rerun()
+                    else:
+                        if st.button("👁️ View", key=f"view_{file_info['name']}"):
+                            st.session_state.selected_file = file_info['path']
+                            st.rerun()
                 st.divider()
     else:
         # Grid view
         cols = st.columns(3)
         for i, file_info in enumerate(file_data):
             with cols[i % 3]:
+                if bulk_delete_mode:
+                    st.checkbox(f"Select", key=f"delete_{file_info['name']}")
+                
                 st.markdown(f"""
                 <div class="file-item">
                     <h4>{file_info['name'].replace('.md', '')}</h4>
                     <p>📄 {file_info['size_mb']:.2f} MB | 📅 {file_info['modified'].strftime("%m/%d/%Y")}</p>
                 </div>
                 """, unsafe_allow_html=True)
-                if st.button("👁️ View", key=f"view_grid_{file_info['name']}"):
-                    st.session_state.selected_file = file_info['path']
-                    st.rerun()
+                
+                if not bulk_delete_mode:
+                    subcol1, subcol2 = st.columns(2)
+                    with subcol1:
+                        if st.button("👁️ View", key=f"view_grid_{file_info['name']}"):
+                            st.session_state.selected_file = file_info['path']
+                            st.rerun()
+                    with subcol2:
+                        if st.button("🗑️ Delete", key=f"grid_delete_{file_info['name']}"):
+                            if confirm_delete_file(file_info):
+                                st.rerun()
+                else:
+                    if st.button("👁️ View", key=f"view_grid_{file_info['name']}"):
+                        st.session_state.selected_file = file_info['path']
+                        st.rerun()
     
     # File viewer
     if 'selected_file' in st.session_state and st.session_state.selected_file:
@@ -350,12 +431,23 @@ def show_file_viewer(file_path):
     st.markdown("---")
     st.markdown("### 📖 File Viewer")
     
-    # Breadcrumb
+    # Breadcrumb and actions
     filename = os.path.basename(file_path)
-    col1, col2 = st.columns([3, 1])
+    col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         st.markdown(f"**📁 Knowledge Vault** › **{filename.replace('.md', '')}**")
     with col2:
+        if st.button("🗑️ Delete File", type="secondary"):
+            file_info = {
+                'name': filename,
+                'path': file_path,
+                'size': os.path.getsize(file_path),
+                'modified': datetime.fromtimestamp(os.path.getmtime(file_path)),
+                'size_mb': os.path.getsize(file_path) / (1024 * 1024)
+            }
+            if confirm_delete_file(file_info):
+                st.rerun()
+    with col3:
         if st.button("← Back to Files"):
             del st.session_state.selected_file
             st.rerun()
@@ -647,6 +739,42 @@ def show_recent_files_preview():
             if st.button("View", key=f"recent_{filename}"):
                 st.session_state.selected_file = file_path
                 st.rerun()
+
+def confirm_delete_file(file_info):
+    """Confirm and delete a single file."""
+    # Create a confirmation dialog using session state
+    confirm_key = f"confirm_delete_{file_info['name']}"
+    
+    if confirm_key not in st.session_state:
+        st.session_state[confirm_key] = False
+    
+    if not st.session_state[confirm_key]:
+        st.warning(f"⚠️ Are you sure you want to delete '{file_info['name'].replace('.md', '')}'?")
+        # Use buttons without columns since we're already in a nested column structure
+        if st.button("✅ Yes, Delete", key=f"confirm_yes_{file_info['name']}"):
+            st.session_state[confirm_key] = True
+            return True
+        if st.button("❌ Cancel", key=f"confirm_no_{file_info['name']}"):
+            return False
+        return False
+    else:
+        # Actually delete the file
+        try:
+            os.remove(file_info['path'])
+            st.success(f"✅ Successfully deleted '{file_info['name'].replace('.md', '')}'!")
+            # Clean up session state
+            if confirm_key in st.session_state:
+                del st.session_state[confirm_key]
+            # Clear selected file if it was the deleted one
+            if 'selected_file' in st.session_state and st.session_state.selected_file == file_info['path']:
+                del st.session_state.selected_file
+            return True
+        except Exception as e:
+            st.error(f"❌ Error deleting file: {e}")
+            # Clean up session state on error
+            if confirm_key in st.session_state:
+                del st.session_state[confirm_key]
+            return False
 
 def get_vault_path():
     """Get the knowledge vault path."""
