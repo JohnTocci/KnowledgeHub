@@ -1,7 +1,3 @@
-"""
-Modern Streamlit Web Interface for KnowledgeHub.
-A visually appealing, responsive web application for knowledge management.
-"""
 import os
 import sys
 import glob
@@ -12,12 +8,16 @@ from datetime import datetime
 import re
 from streamlit_option_menu import option_menu
 import pandas as pd
+import logging
 
 from dotenv import load_dotenv
 load_dotenv()
 
 # Add src directory to Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Check if we're in demo mode (no API key)
 DEMO_MODE = not os.environ.get('OPENAI_API_KEY')
@@ -73,6 +73,44 @@ demo, test, knowledge-hub, ai, summarization, data-extraction"""
         ]
 
     def save_as_markdown(content, title, url, saved_images=None, metadata=None):
+        # Mock function for demo mode
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        markdown_content = f"""# {title}
+
+**Source:** [{url}]({url})
+**Date Processed:** {timestamp}
+
+---
+
+{content}
+"""
+        
+        # In demo mode, just return a fake filepath
+        filepath = f"/demo/vault/{title.replace(' ', '_')}.md"
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(markdown_content)
+        
+        return filepath
+    
+    # Import utility functions for demo mode too
+    from session_manager import SessionManager, URLHistory
+    from utils import (
+        validate_and_sanitize_url, detect_content_type, estimate_processing_time,
+        format_file_size, format_time_ago, ContentAnalyzer
+    )
+    
+    # Create instances for demo mode
+    session_manager = SessionManager()
+    url_history = URLHistory()
+    
+    def display_error(error, show_retry=False):
+        st.error(f"Demo Mode Error: {str(error)}")
+        return False if not show_retry else st.button("Retry")
+    
+    def get_error_recovery_suggestions(error):
+        return ["This is demo mode - errors are simulated", "Add your OpenAI API key for full functionality"]
         # Create a demo knowledge vault
         vault_path = os.path.expanduser("~/KnowledgeHub")
         os.makedirs(vault_path, exist_ok=True)
@@ -101,63 +139,104 @@ else:
     # Import real functions from hub.py
     try:
         from hub import get_article_text, get_youtube_transcription, summarize_text, save_as_markdown
-    except ImportError:
-        st.error("Could not import hub functions. Please check your installation.")
+        from error_handler import (
+            display_error, validate_url, KnowledgeHubError, APIError, ValidationError,
+            get_error_recovery_suggestions
+        )
+        from background_tasks import task_manager, run_with_progress
+        from session_manager import session_manager, url_history, show_session_statistics
+        from utils import (
+            validate_and_sanitize_url, detect_content_type, estimate_processing_time,
+            format_file_size, format_time_ago, ContentAnalyzer
+        )
+        # Initialize session manager
+        session_manager.initialize_session_state()
+    except ImportError as e:
+        st.error(f"Could not import required modules: {e}")
+        st.error("Please check your installation and ensure all dependencies are installed.")
         st.stop()
 
 # Configure Streamlit page
 st.set_page_config(
-    page_title="KnowledgeHub",
-    page_icon="🧠",
+    page_title="KnowledgeHub - Professional Knowledge Management",
+    page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for beautiful styling
+# Custom CSS for professional styling
 st.markdown("""
 <style>
     .main-header {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
         padding: 2rem;
-        border-radius: 10px;
+        border-radius: 12px;
         margin-bottom: 2rem;
         text-align: center;
         color: white;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
     }
     
     .feature-card {
         background: white;
-        padding: 1.5rem;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 15px rgba(0,0,0,0.08);
         margin: 1rem 0;
-        border-left: 4px solid #667eea;
+        border-left: 4px solid #2a5298;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .feature-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 25px rgba(0,0,0,0.12);
     }
     
     .stat-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #2a5298 0%, #1e3c72 100%);
         color: white;
-        padding: 1rem;
-        border-radius: 10px;
+        padding: 1.5rem;
+        border-radius: 12px;
         text-align: center;
         margin: 0.5rem;
+        box-shadow: 0 3px 15px rgba(0,0,0,0.1);
     }
     
     .success-message {
-        background: linear-gradient(90deg, #56ab2f 0%, #a8e6cf 100%);
+        background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
         color: white;
-        padding: 1rem;
-        border-radius: 5px;
+        padding: 1.5rem;
+        border-radius: 8px;
         margin: 1rem 0;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .error-message {
+        background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin: 1rem 0;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .warning-message {
+        background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin: 1rem 0;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
     
     .demo-banner {
-        background: linear-gradient(90deg, #f093fb 0%, #f5576c 100%);
+        background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
         color: white;
         padding: 1rem;
-        border-radius: 5px;
+        border-radius: 8px;
         text-align: center;
         margin: 1rem 0;
+        font-weight: 500;
     }
     
     .file-item {
@@ -177,27 +256,31 @@ st.markdown("""
 def main():
     # Sidebar navigation
     with st.sidebar:
-        st.image("https://img.icons8.com/color/96/brain.png", width=64)
-        st.title("🧠 KnowledgeHub")
+        # Professional header
+        st.markdown("""
+        <div style="text-align: center; padding: 1rem 0;">
+            <h2 style="color: #2a5298; margin: 0;">KnowledgeHub</h2>
+            <p style="color: #666; margin: 0; font-size: 0.9rem;">Professional Knowledge Management</p>
+        </div>
+        """, unsafe_allow_html=True)
         
         selected = option_menu(
             menu_title=None,
-            options=["Add Content", "Browse Files", "Analytics", "Configuration"],
-            icons=["plus-circle", "folder", "bar-chart", "gear"],
+            options=["Add Content", "Browse Files", "Analytics", "Settings"],
+            icons=["plus-square", "folder2-open", "graph-up", "gear"],
             menu_icon="cast",
             default_index=0,
             styles={
                 "container": {"padding": "0!important", "background-color": "#fafafa"},
-                "icon": {"color": "orange", "font-size": "18px"}, 
-                "nav-link": {"font-size": "16px", "text-align": "left", "margin":"0px", "--hover-color": "#eee"},
-                "nav-link-selected": {"background-color": "#667eea"},
+                "icon": {"color": "#2a5298", "font-size": "18px"}, 
+                "nav-link": {"font-size": "16px", "text-align": "left", "margin":"0px", "--hover-color": "#e8f2ff"},
+                "nav-link-selected": {"background-color": "#2a5298", "color": "white"},
             }
         )
         
         # Demo mode indicator
         if DEMO_MODE:
-            st.markdown('<div class="demo-banner">🎮 Demo Mode Active</div>', unsafe_allow_html=True)
-            st.info("Add your OpenAI API key to enable full functionality.")
+            st.markdown('<div class="demo-banner"><strong>Demo Mode</strong><br>Add your OpenAI API key to enable full functionality</div>', unsafe_allow_html=True)
         
         # Quick stats
         vault_path = get_vault_path()
@@ -205,12 +288,13 @@ def main():
             files = glob.glob(os.path.join(vault_path, "*.md"))
             total_size = sum(os.path.getsize(f) for f in files if os.path.isfile(f))
             
-            st.markdown("### 📊 Quick Stats")
+            st.markdown("---")
+            st.markdown("**Quick Overview**")
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Total Files", len(files))
+                st.metric("Files", len(files))
             with col2:
-                st.metric("Vault Size", f"{total_size / (1024*1024):.1f} MB")
+                st.metric("Size", f"{total_size / (1024*1024):.1f} MB")
 
     # Main content area
     if selected == "Add Content":
@@ -219,63 +303,169 @@ def main():
         show_browse_files_page()
     elif selected == "Analytics":
         show_analytics_page()
-    elif selected == "Configuration":
+    elif selected == "Settings":
         show_configuration_page()
 
 def show_add_content_page():
-    # Header
+    # Professional header
     st.markdown("""
     <div class="main-header">
-        <h1>🚀 Transform Knowledge with AI</h1>
-        <p>Convert any article or YouTube video into structured, searchable knowledge</p>
+        <h1>Transform Knowledge with AI</h1>
+        <p>Convert articles and videos into structured, searchable knowledge</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # URL input form
+    # URL input form with improved validation and suggestions
     with st.container():
-        st.markdown("### 📝 Add New Content")
+        st.markdown("### Add New Content")
         
-        col1, col2 = st.columns([3, 1])
+        col1, col2 = st.columns([4, 1])
         with col1:
+            # URL input with smart suggestions
             url = st.text_input(
-                "Enter URL",
+                "Content URL",
+                value=st.session_state.get('last_url_input', ''),
                 placeholder="https://example.com/article or https://youtube.com/watch?v=...",
-                help="Supports web articles and YouTube videos"
+                help="Enter a web article URL or YouTube video link"
             )
+            
+            # Store the current input
+            st.session_state.last_url_input = url
+            
+            # Show URL suggestions if user has history
+            if url and len(url) > 5:
+                suggestions = url_history.get_url_suggestions(url)
+                if suggestions:
+                    st.markdown("**Similar URLs from history:**")
+                    for suggestion in suggestions[:3]:
+                        if st.button(f"🔗 {suggestion[:50]}...", key=f"suggestion_{hash(suggestion)}"):
+                            st.session_state.last_url_input = suggestion
+                            st.rerun()
+            
         with col2:
             st.markdown("<br>", unsafe_allow_html=True)  # Spacing
-            process_btn = st.button("🔄 Process Content", type="primary", use_container_width=True)
+            process_btn = st.button("Process Content", type="primary", use_container_width=True)
     
-    # Process content when button is clicked
-    if process_btn and url:
-        process_content(url)
-    elif process_btn and not url:
-        st.error("Please enter a URL to process.")
+    # Show content type detection and time estimate
+    if url:
+        clean_url, is_valid = validate_and_sanitize_url(url)
+        if is_valid:
+            content_type = detect_content_type(clean_url)
+            time_estimate = estimate_processing_time(clean_url)
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.info(f"**Type:** {content_type.title()}")
+            with col2:
+                st.info(f"**Est. Time:** {time_estimate['min']}-{time_estimate['max']}s")
+            with col3:
+                if content_type == 'youtube':
+                    st.info("**Audio:** Will be transcribed")
+                else:
+                    st.info("**Text:** Will be extracted")
+        elif url.strip():
+            st.warning("⚠️ URL format appears invalid")
     
-    # Feature showcase
+    # Process content when button is clicked with improved error handling
+    if process_btn:
+        if not url:
+            st.error("**Error:** Please enter a URL to process.")
+        else:
+            # Validate and clean URL
+            clean_url, is_valid = validate_and_sanitize_url(url)
+            if not is_valid:
+                st.error("**Error:** Invalid URL format. Please check and try again.")
+                st.info("**Examples:**\n- https://www.example.com/article\n- https://youtube.com/watch?v=abc123")
+            else:
+                # Add to URL history
+                url_history.add_url(clean_url)
+                
+                # Process with enhanced error handling
+                try:
+                    process_content_with_error_handling(clean_url)
+                    session_manager.add_to_processing_history(clean_url, "Processing...", "success")
+                    session_manager.update_counters(success=True)
+                except Exception as e:
+                    session_manager.add_to_processing_history(clean_url, "Failed", "error")
+                    session_manager.update_counters(error=True)
+                    display_error(e)
+                    
+                    # Show suggestions
+                    suggestions = get_error_recovery_suggestions(e)
+                    if suggestions:
+                        with st.expander("💡 Suggestions"):
+                            for suggestion in suggestions:
+                                st.write(f"• {suggestion}")
+    
+    # Show recent activity in sidebar
+    with st.sidebar:
+        if st.session_state.get('processing_history'):
+            st.markdown("---")
+            st.markdown("**Recent Activity**")
+            
+            # Show last 3 processed items
+            recent = session_manager.get_processing_history(limit=3)
+            for entry in reversed(recent):
+                status_icon = "✅" if entry['status'] == 'success' else "❌"
+                timestamp = datetime.fromisoformat(entry['timestamp'])
+                time_ago = format_time_ago(timestamp)
+                
+                with st.container():
+                    st.write(f"{status_icon} {entry['title'][:30]}...")
+                    st.caption(f"{time_ago}")
+            
+            # Show session stats
+            stats = session_manager.get_statistics()
+            if stats['total_processed'] > 0:
+                st.markdown("**Session Stats**")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Processed", stats['total_processed'])
+                with col2:
+                    st.metric("Success", f"{stats['success_rate']:.0f}%")
+    
+    # Professional feature showcase
+    st.markdown("---")
+    st.markdown("### Supported Content Types")
+    
     col1, col2, col3 = st.columns(3)
     
     with col1:
         st.markdown("""
         <div class="feature-card">
-            <h3>🌐 Web Articles</h3>
-            <p>Extract clean content from any web article, ignoring ads and clutter.</p>
+            <h4>Web Articles</h4>
+            <p>Extract clean content from web articles, automatically filtering out ads and navigation elements.</p>
+            <ul>
+                <li>Automatic content extraction</li>
+                <li>Metadata preservation</li>
+                <li>Image downloading</li>
+            </ul>
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
         st.markdown("""
         <div class="feature-card">
-            <h3>🎥 YouTube Videos</h3>
-            <p>Transcribe and summarize YouTube videos using AI-powered speech recognition.</p>
+            <h4>YouTube Videos</h4>
+            <p>Transcribe and summarize YouTube videos using advanced speech recognition technology.</p>
+            <ul>
+                <li>Audio transcription</li>
+                <li>Multiple quality options</li>
+                <li>Automatic cleanup</li>
+            </ul>
         </div>
         """, unsafe_allow_html=True)
     
     with col3:
         st.markdown("""
         <div class="feature-card">
-            <h3>🤖 AI Summaries</h3>
-            <p>Generate concise summaries, key takeaways, and relevant tags automatically.</p>
+            <h4>AI Processing</h4>
+            <p>Generate intelligent summaries with key insights and automatic categorization.</p>
+            <ul>
+                <li>Structured summaries</li>
+                <li>Key takeaways</li>
+                <li>Automatic tagging</li>
+            </ul>
         </div>
         """, unsafe_allow_html=True)
     
@@ -787,132 +977,194 @@ def show_configuration_page():
         ```
         """)
 
-def process_content(url):
-    """Process URL content and save to knowledge vault."""
+def process_content_with_error_handling(url):
+    """Process URL content with improved error handling and background processing."""
     
-    with st.spinner("🔄 Processing content..."):
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
+    # Create containers for progress tracking
+    progress_container = st.container()
+    
+    def process_task(progress_callback):
+        """Background task for processing content."""
         try:
-            # Step 1: Extract content
-            status_text.text("📥 Extracting content...")
-            progress_bar.progress(25)
+            progress_callback(0.1, "Initializing...")
             
-            if "youtube.com" in url or "youtu.be" in url:
+            # Step 1: Extract content
+            progress_callback(0.2, "Extracting content...")
+            
+            if "youtube.com" in url.lower() or "youtu.be" in url.lower():
                 content, title = get_youtube_transcription(url)
                 content_type = "YouTube Video"
                 saved_images = []
                 metadata = {}
                 additional_context = "Content source: YouTube video transcription"
+                progress_callback(0.5, "Transcription completed")
             else:
                 article_data = get_article_text(url)
-                if article_data:
-                    content = article_data['text']
-                    title = article_data['title']
-                    content_type = "Web Article"
-                    
-                    # Step 1.5: Download images
-                    status_text.text("📸 Downloading images...")
-                    progress_bar.progress(35)
-                    
-                    if not DEMO_MODE:
-                        from src.hub import download_and_save_images
-                        vault_path = get_vault_path()
-                        saved_images = download_and_save_images(article_data['images'], title, vault_path)
-                    else:
-                        saved_images = download_and_save_images(article_data['images'], title, "")
-                    
-                    # Prepare metadata
-                    metadata = {
-                        'authors': article_data['authors'],
-                        'publish_date': article_data['publish_date'],
-                        'meta_description': article_data['meta_description'],
-                        'meta_keywords': article_data['meta_keywords']
-                    }
-                    
-                    # Prepare additional context for AI
-                    additional_context = f"""
-                    Content source: Web article
-                    Number of images found: {len(article_data['images'])}
-                    Images downloaded: {len(saved_images)}
-                    Authors: {', '.join(article_data['authors']) if article_data['authors'] else 'Unknown'}
-                    Publication date: {article_data['publish_date'] if article_data['publish_date'] else 'Unknown'}
-                    Meta description: {article_data['meta_description'] if article_data['meta_description'] else 'None'}
-                    """
+                content = article_data['text']
+                title = article_data['title']
+                content_type = "Web Article"
+                
+                progress_callback(0.4, "Downloading images...")
+                
+                if not DEMO_MODE:
+                    from hub import download_and_save_images
+                    vault_path = get_vault_path()
+                    saved_images = download_and_save_images(article_data['images'], title, vault_path)
                 else:
-                    content, title = None, None
-                    saved_images = []
-                    metadata = {}
-                    additional_context = ""
+                    saved_images = download_and_save_images(article_data['images'], title, "")
+                
+                # Prepare metadata
+                metadata = {
+                    'authors': article_data['authors'],
+                    'publish_date': article_data['publish_date'],
+                    'meta_description': article_data['meta_description'],
+                    'meta_keywords': article_data['meta_keywords']
+                }
+                
+                additional_context = f"""
+                Content source: Web article
+                Number of images found: {len(article_data['images'])}
+                Authors: {', '.join(article_data['authors']) if article_data['authors'] else 'Unknown'}
+                Publication date: {article_data['publish_date'] if article_data['publish_date'] else 'Unknown'}
+                Meta description: {article_data['meta_description'] if article_data['meta_description'] else 'None'}
+                """
             
-            if not content or not title:
-                st.error("❌ Failed to extract content from URL")
-                return
+            progress_callback(0.6, "Generating AI summary...")
             
-            # Step 2: Generate AI summary with enhanced data extraction
-            status_text.text("🤖 Generating AI summary with data insights...")
-            progress_bar.progress(50)
-            
+            # Step 2: Generate AI summary
             summary = summarize_text(content, title, additional_context)
             
-            # Step 3: Save to knowledge vault with images and metadata
-            status_text.text("💾 Saving to knowledge vault...")
-            progress_bar.progress(75)
+            progress_callback(0.8, "Saving to knowledge vault...")
             
+            # Step 3: Save to knowledge vault
             filepath = save_as_markdown(summary, title, url, saved_images, metadata)
             
-            # Complete
-            progress_bar.progress(100)
-            status_text.text("✅ Processing complete!")
+            progress_callback(1.0, "Processing complete!")
             
-            # Enhanced success message
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                st.markdown(f"""
-                <div class="success-message">
-                    <h3>🎉 Content Processed Successfully!</h3>
-                    <p><strong>Type:</strong> {content_type}</p>
-                    <p><strong>Title:</strong> {title}</p>
-                    <p><strong>Saved to:</strong> {os.path.basename(filepath) if filepath else 'Demo Mode'}</p>
-                </div>
-                """, unsafe_allow_html=True)
+            return {
+                'success': True,
+                'title': title,
+                'content_type': content_type,
+                'filepath': filepath,
+                'summary': summary,
+                'saved_images': saved_images,
+                'metadata': metadata
+            }
             
-            with col2:
-                if saved_images:
-                    st.markdown(f"""
-                    <div class="stats-box">
-                        <h4>📸 Visual Content</h4>
-                        <p>{len(saved_images)} images saved</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                if metadata and metadata.get('authors'):
-                    st.markdown(f"""
-                    <div class="stats-box">
-                        <h4>✍️ Author(s)</h4>
-                        <p>{', '.join(metadata['authors'])}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-            
-            # Show enhanced preview
-            with st.expander("👁️ Preview Generated Content"):
-                st.markdown(summary)
-                
-            # Show extracted images if any
-            if saved_images:
-                with st.expander("📸 Extracted Images"):
-                    for img in saved_images:
-                        st.markdown(f"**{img['filename']}**")
-                        st.markdown(f"Source: [{img['url']}]({img['url']})")
-                        st.divider()
-                
         except Exception as e:
-            st.error(f"❌ Error processing content: {str(e)}")
-        finally:
-            # Clear progress indicators
-            progress_bar.empty()
-            status_text.empty()
+            logging.error(f"Error processing content: {e}", exc_info=True)
+            raise e
+    
+    # Run with progress tracking
+    if DEMO_MODE:
+        # For demo mode, run synchronously to keep it simple
+        try:
+            result = process_task(lambda p, m="": None)
+            display_success_result(result)
+        except Exception as e:
+            display_error(e, show_retry=True)
+    else:
+        # Use background processing for real mode
+        with progress_container:
+            try:
+                result = run_with_progress(process_task, "Processing Content")
+                if result and result.get('success'):
+                    display_success_result(result)
+            except Exception as e:
+                display_error(e, show_retry=True)
+
+
+def display_success_result(result):
+    """Display successful processing results with enhanced information."""
+    st.markdown(f"""
+    <div class="success-message">
+        <h3>Content Processed Successfully</h3>
+        <p><strong>Type:</strong> {result['content_type']}</p>
+        <p><strong>Title:</strong> {result['title']}</p>
+        <p><strong>File:</strong> {os.path.basename(result['filepath']) if result['filepath'] else 'Demo Mode'}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Analyze content and show insights
+    if result.get('summary'):
+        analyzer = ContentAnalyzer()
+        content_stats = analyzer.count_elements(result['summary'])
+        reading_time = analyzer.estimate_reading_time(result['summary'])
+        
+        # Show content analysis
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Words", content_stats['words'])
+        with col2:
+            st.metric("Read Time", f"{reading_time} min")
+        with col3:
+            st.metric("Paragraphs", content_stats['paragraphs'])
+        with col4:
+            if result['saved_images']:
+                st.metric("Images", len(result['saved_images']))
+            else:
+                st.metric("Images", 0)
+    
+    # Show additional details
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        if result['saved_images']:
+            st.success(f"✅ Downloaded {len(result['saved_images'])} images")
+        
+        if result['metadata'] and result['metadata'].get('authors'):
+            st.info(f"👤 Authors: {', '.join(result['metadata']['authors'])}")
+        
+        if result['metadata'] and result['metadata'].get('publish_date'):
+            st.info(f"📅 Published: {result['metadata']['publish_date']}")
+    
+    with col2:
+        # Action buttons
+        if st.button("📖 View Summary", type="secondary", use_container_width=True):
+            st.session_state.show_content_preview = True
+        
+        if result['saved_images'] and st.button("🖼️ View Images", type="secondary", use_container_width=True):
+            st.session_state.show_images_preview = True
+        
+        if result['filepath'] and st.button("📁 Open Folder", type="secondary", use_container_width=True):
+            st.info(f"File saved to: {os.path.dirname(result['filepath'])}")
+    
+    # Expandable content sections
+    if st.session_state.get('show_content_preview', False):
+        with st.expander("📖 Generated Summary", expanded=True):
+            st.markdown(result['summary'])
+            
+            # Add copy button functionality via text area
+            st.text_area("Copy text from here:", result['summary'], height=200, key="summary_copy")
+    
+    if st.session_state.get('show_images_preview', False) and result['saved_images']:
+        with st.expander("🖼️ Downloaded Images", expanded=True):
+            for i, img in enumerate(result['saved_images']):
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    st.markdown(f"**Image {i+1}**")
+                    st.caption(f"File: {img['filename']}")
+                with col2:
+                    st.markdown(f"Source: [{img['url']}]({img['url']})")
+                    if os.path.exists(img['path']):
+                        try:
+                            st.image(img['path'], width=200)
+                        except Exception:
+                            st.text("Preview not available")
+                st.divider()
+    
+    # Clear preview states
+    if st.button("🔄 Process Another URL", type="primary"):
+        st.session_state.show_content_preview = False
+        st.session_state.show_images_preview = False
+        st.session_state.last_url_input = ""
+        st.rerun()
+
+
+def process_content(url):
+    """Legacy process content function - redirects to new implementation."""
+    return process_content_with_error_handling(url)
+
 
 def show_recent_files_preview():
     """Show a preview of recent files."""
