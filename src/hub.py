@@ -100,6 +100,13 @@ def get_youtube_transcription(url):
         'outtmpl': 'temp_audio.%(ext)s',
         'quiet': True,
     }
+    
+    # Check for custom ffmpeg location in config and add it if it exists
+    ffmpeg_location = config.get("ffmpeg_location")
+    if ffmpeg_location:
+        ydl_opts['ffmpeg_location'] = ffmpeg_location
+        print(f"✅ Using FFmpeg from: {ffmpeg_location}")
+
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
