@@ -130,6 +130,23 @@ demo, test, knowledge-hub, ai, summarization, data-extraction"""
     DatabaseManager = MockDatabaseManager
     FileProcessor = MockFileProcessor
     
+    class MockInternalLinker:
+        def __init__(self, db_manager): pass
+        def find_related_content(self, *args, **kwargs): return []
+        def add_internal_links(self, *args, **kwargs): return False
+        def update_all_internal_links(self): return {"updated": 0, "skipped": 0, "errors": 0}
+        def find_broken_links(self): return []
+    
+    class MockFeedManager:
+        def __init__(self, db_manager): pass
+        def get_feeds(self): return [{'name': 'Demo Feed', 'url': 'https://example.com/rss', 'auto_process': True}]
+        def add_feed(self, *args, **kwargs): return {'success': True, 'feed_name': 'Demo Feed'}
+        def validate_feed_url(self, url): return {'valid': True, 'title': 'Demo Feed'}
+        def get_feed_stats(self): return {'total_feed_items': 5, 'feeds_configured': 1}
+    
+    InternalLinker = MockInternalLinker
+    FeedManager = MockFeedManager
+    
     # Create instances for demo mode
     session_manager = SessionManager()
     url_history = URLHistory()
@@ -180,6 +197,8 @@ else:
         )
         from database_manager import DatabaseManager
         from file_processor import FileProcessor
+        from internal_linking import InternalLinker
+        from rss_feeds import FeedManager
         # Initialize session manager
         session_manager.initialize_session_state()
     except ImportError as e:
@@ -800,6 +819,92 @@ def show_file_viewer(file_path):
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
         
+        # Tag Management Section
+        st.markdown("---")
+        st.markdown("### 🏷️ Tag Management")
+        
+        # Initialize database manager
+        db_manager = DatabaseManager()
+        
+        # Get current tags for this file
+        file_metadata = db_manager.get_content_metadata(file_path=file_path)
+        current_tags = file_metadata.get('tags', []) if file_metadata else []
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            # Display current tags
+            if current_tags:
+                st.markdown("**Current Tags:**")
+                tag_cols = st.columns(min(len(current_tags), 4))
+                for i, tag in enumerate(current_tags):
+                    with tag_cols[i % 4]:
+                        if st.button(f"❌ {tag}", key=f"remove_tag_{tag}_{filename}", help="Click to remove"):
+                            # Remove tag
+                            new_tags = [t for t in current_tags if t != tag]
+                            if file_metadata:
+                                db_manager.update_content_tags(file_metadata['id'], new_tags)
+                            st.success(f"Removed tag: {tag}")
+                            st.rerun()
+            else:
+                st.info("No tags assigned yet")
+        
+        with col2:
+            # Add new tag
+            new_tag = st.text_input("Add new tag:", placeholder="Enter tag name", key=f"new_tag_{filename}")
+            if st.button("➕ Add Tag", key=f"add_tag_btn_{filename}"):
+                if new_tag and new_tag.strip():
+                    clean_tag = new_tag.strip().lower()
+                    if clean_tag not in current_tags:
+                        new_tags = current_tags + [clean_tag]
+                        
+                        # Add to database
+                        if file_metadata:
+                            db_manager.update_content_tags(file_metadata['id'], new_tags)
+                        else:
+                            # Create new entry if not in database
+                            title = filename.replace('.md', '').replace('_', ' ').title()
+                            db_manager.add_content(
+                                file_path=file_path,
+                                title=title,
+                                content_type='article',
+                                tags=new_tags
+                            )
+                        
+                        st.success(f"Added tag: {clean_tag}")
+                        st.rerun()
+                    else:
+                        st.warning("Tag already exists!")
+                else:
+                    st.warning("Please enter a valid tag name")
+        
+        # Suggested tags from other content
+        all_tags = db_manager.get_all_tags()
+        if all_tags:
+            popular_tags = [tag['name'] for tag in all_tags[:10] if tag['name'] not in current_tags]
+            if popular_tags:
+                st.markdown("**Suggested tags (click to add):**")
+                suggestion_cols = st.columns(min(len(popular_tags), 5))
+                for i, tag in enumerate(popular_tags):
+                    with suggestion_cols[i % 5]:
+                        if st.button(f"+ {tag}", key=f"suggest_tag_{tag}_{filename}"):
+                            new_tags = current_tags + [tag]
+                            if file_metadata:
+                                db_manager.update_content_tags(file_metadata['id'], new_tags)
+                            else:
+                                title = filename.replace('.md', '').replace('_', ' ').title()
+                                db_manager.add_content(
+                                    file_path=file_path,
+                                    title=title,
+                                    content_type='article',
+                                    tags=new_tags
+                                )
+                            st.success(f"Added suggested tag: {tag}")
+                            st.rerun()
+        
+        st.markdown("---")
+        
+        # File content display
         if view_mode == "📖 Rendered":
             st.markdown(content, unsafe_allow_html=True)
         else:
@@ -1252,6 +1357,167 @@ def show_configuration_page():
     
     for key, value in config_data.items():
         st.text(f"{key}: {value}")
+    
+    # RSS Feed Management
+    st.markdown("---")
+    st.markdown("### 📡 RSS Feed Management")
+    
+    feed_manager = FeedManager(db_manager)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**📋 Current Feeds**")
+        feeds = feed_manager.get_feeds()
+        
+        if feeds:
+            for i, feed in enumerate(feeds):
+                with st.container():
+                    st.markdown(f"""
+                    **{feed['name']}**  
+                    🔗 {feed['url'][:50]}{'...' if len(feed['url']) > 50 else ''}  
+                    ⚙️ Auto-process: {'✅' if feed.get('auto_process') else '❌'}
+                    """)
+                    
+                    if not DEMO_MODE and st.button(f"🗑️ Remove", key=f"remove_feed_{i}"):
+                        if feed_manager.remove_feed(feed['url']):
+                            st.success(f"Removed feed: {feed['name']}")
+                            st.rerun()
+        else:
+            st.info("No RSS feeds configured yet")
+        
+        # Feed stats
+        if not DEMO_MODE:
+            feed_stats = feed_manager.get_feed_stats()
+            st.markdown(f"""
+            **📊 Feed Statistics:**
+            - Total items: {feed_stats.get('total_feed_items', 0)}
+            - Configured feeds: {feed_stats.get('feeds_configured', 0)}
+            """)
+    
+    with col2:
+        st.markdown("**➕ Add New Feed**")
+        
+        new_feed_url = st.text_input(
+            "RSS Feed URL", 
+            placeholder="https://example.com/rss.xml",
+            key="new_feed_url"
+        )
+        
+        new_feed_name = st.text_input(
+            "Feed Name (optional)", 
+            placeholder="My Blog Feed",
+            key="new_feed_name"
+        )
+        
+        auto_process = st.checkbox("Auto-process new items", value=True, key="auto_process_feed")
+        max_items = st.number_input("Max items to process", min_value=1, max_value=50, value=10, key="max_feed_items")
+        
+        if st.button("🔍 Validate Feed", key="validate_feed"):
+            if new_feed_url:
+                validation = feed_manager.validate_feed_url(new_feed_url)
+                if validation['valid']:
+                    st.success(f"✅ Valid feed: {validation['title']}")
+                    st.info(f"Found {validation.get('items_count', 0)} items")
+                else:
+                    st.error(f"❌ Invalid feed: {validation['error']}")
+            else:
+                st.warning("Please enter a feed URL")
+        
+        if st.button("➕ Add Feed", key="add_feed"):
+            if new_feed_url:
+                if not DEMO_MODE:
+                    result = feed_manager.add_feed(new_feed_url, new_feed_name, auto_process, max_items)
+                    if result['success']:
+                        st.success(f"✅ Added feed: {result['feed_name']}")
+                        st.info(f"Processed {result.get('items_processed', 0)} items")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Failed to add feed: {result['error']}")
+                else:
+                    st.success("✅ Demo: Feed would be added in full mode")
+            else:
+                st.warning("Please enter a feed URL")
+        
+        if st.button("🔄 Update All Feeds", key="update_feeds"):
+            if not DEMO_MODE:
+                with st.spinner("Updating feeds..."):
+                    results = feed_manager.update_all_feeds()
+                    st.success(f"Updated {results['feeds_updated']} feeds, processed {results['items_processed']} items")
+                    if results['errors'] > 0:
+                        st.warning(f"Encountered {results['errors']} errors")
+            else:
+                st.success("✅ Demo: Feeds would be updated in full mode")
+    
+    # Internal Linking Management
+    st.markdown("---")
+    st.markdown("### 🔗 Internal Linking")
+    
+    internal_linker = InternalLinker(db_manager)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**🔧 Link Management**")
+        
+        if st.button("🔄 Update All Internal Links", key="update_internal_links"):
+            if not DEMO_MODE:
+                with st.spinner("Updating internal links..."):
+                    results = internal_linker.update_all_internal_links()
+                    st.success(f"Updated: {results['updated']}, Skipped: {results['skipped']}")
+                    if results['errors'] > 0:
+                        st.warning(f"Errors: {results['errors']}")
+            else:
+                st.success("✅ Demo: Internal links would be updated in full mode")
+        
+        if st.button("🔍 Find Broken Links", key="find_broken_links"):
+            if not DEMO_MODE:
+                broken_links = internal_linker.find_broken_links()
+                if broken_links:
+                    st.warning(f"Found {len(broken_links)} broken links")
+                    for link in broken_links[:5]:  # Show first 5
+                        st.text(f"• {link['source_title']}: '{link['broken_link']}'")
+                else:
+                    st.success("No broken links found!")
+            else:
+                st.success("✅ Demo: Would check for broken links in full mode")
+    
+    with col2:
+        st.markdown("**📊 Linking Statistics**")
+        
+        if not DEMO_MODE:
+            all_content = db_manager.get_all_content()
+            total_content = len(all_content)
+            
+            # Count content with potential links (basic estimation)
+            linked_content = sum(1 for content in all_content if content.get('tags'))
+            
+            st.metric("Total Content", total_content)
+            st.metric("Tagged Content", linked_content)
+            st.metric("Link Potential", f"{(linked_content/max(total_content,1)*100):.0f}%")
+        else:
+            st.metric("Total Content", "42")
+            st.metric("Tagged Content", "28") 
+            st.metric("Link Potential", "67%")
+        
+        st.markdown("**⚙️ Linking Settings**")
+        
+        min_similarity = st.slider(
+            "Minimum similarity for auto-linking",
+            min_value=0.1,
+            max_value=1.0,
+            value=0.3,
+            step=0.1,
+            key="min_similarity"
+        )
+        
+        max_links = st.number_input(
+            "Max links per document",
+            min_value=1,
+            max_value=20,
+            value=5,
+            key="max_links"
+        )
     
     # Data Management
     st.markdown("---")
