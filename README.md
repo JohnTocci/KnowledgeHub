@@ -106,7 +106,29 @@ The application will automatically create the knowledge vault directory if it do
 
 ## ▶️ Usage
 
-With your virtual environment activated, simply run the script from the root directory:
+KnowledgeHub offers both a modern web interface and a command-line interface:
+
+### 🌐 Web Interface (Recommended)
+
+Launch the beautiful, modern web interface:
 
 ```bash
-python hub.py
+streamlit run streamlit_app.py
+```
+
+Then open your browser to `http://localhost:8501` to access the web interface.
+
+**Features:**
+- 📱 **Mobile-responsive design** - works perfectly on phones and tablets
+- 🎨 **Visually appealing interface** with modern styling
+- 📊 **Analytics dashboard** to track your knowledge vault
+- 🔍 **Search and browse** your files with advanced filtering
+- 📖 **Built-in file viewer** with markdown rendering
+- ⚙️ **Configuration management** through the UI
+
+### 💻 Command Line Interface
+
+For power users who prefer the terminal:
+
+```bash
+python src/hub.py

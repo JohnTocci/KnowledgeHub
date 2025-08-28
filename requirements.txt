@@ -3,3 +3,6 @@ openai==1.102.0
 openai_whisper==20250625
 python-dotenv==1.1.1
 yt_dlp==2025.8.22
+streamlit==1.40.2
+plotly==5.24.1
+streamlit-option-menu==0.4.0
