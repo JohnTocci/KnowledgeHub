@@ -365,8 +365,171 @@ st.markdown("""
         background: #f8f9fa !important;
         border-left: 4px solid #667eea !important;
     }
+    
+    /* Modern Knowledge Vault Cards */
+    .knowledge-card {
+        background: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        border: 1px solid #f1f3f4;
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .knowledge-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        border-color: #667eea;
+    }
+    
+    .knowledge-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    .card-header {
+        margin-bottom: 1rem;
+    }
+    
+    .card-title {
+        color: #2a5298;
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 600;
+        line-height: 1.4;
+    }
+    
+    .card-body {
+        color: #666;
+    }
+    
+    .card-meta {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+    }
+    
+    .meta-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.25rem 0.5rem;
+        background: #f8f9fa;
+        border-radius: 6px;
+        font-weight: 500;
+    }
+    
+    .card-time {
+        font-size: 0.85rem;
+        color: #888;
+        font-style: italic;
+    }
+    
+    /* Enhanced file items for list view */
+    .file-list-item {
+        background: white;
+        border-radius: 12px;
+        padding: 1rem 1.5rem;
+        margin: 0.5rem 0;
+        border: 1px solid #e9ecef;
+        transition: all 0.2s ease;
+    }
+    
+    .file-list-item:hover {
+        border-color: #667eea;
+        background: #fafbff;
+    }
+    
+    /* Improved search and filter styling */
+    .stSelectbox > div > div {
+        border-radius: 8px;
+        border: 1px solid #e1e5e9;
+    }
+    
+    .stTextInput > div > div > input {
+        border-radius: 8px;
+        border: 1px solid #e1e5e9;
+        padding: 0.75rem 1rem;
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    /* Better button styling */
+    .stButton > button {
+        border-radius: 8px;
+        border: 1px solid #e1e5e9;
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+    
+    .stButton > button:hover {
+        border-color: #667eea;
+        background: #f8f9ff;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+def extract_tags_from_summary(summary):
+    """Extract tags from AI-generated summary content."""
+    if not summary:
+        return []
+    
+    tags = []
+    
+    # Look for "Suggested Tags" section
+    lines = summary.split('\n')
+    in_tags_section = False
+    
+    for line in lines:
+        line = line.strip()
+        
+        # Check for tags section headers
+        if any(header in line.lower() for header in ['suggested tags', 'tags:', '## tags', '**tags**']):
+            in_tags_section = True
+            # Check if tags are on the same line
+            if ':' in line:
+                tag_part = line.split(':', 1)[1].strip()
+                if tag_part:
+                    tags.extend([tag.strip() for tag in tag_part.split(',')])
+            continue
+        
+        # If we're in the tags section, extract tags
+        if in_tags_section:
+            # Stop if we hit another section
+            if line.startswith('#') or line.startswith('**') and line.endswith('**'):
+                break
+            
+            # Extract comma-separated tags
+            if line and not line.startswith('*') and not line.startswith('-'):
+                # Remove common prefixes and clean up
+                cleaned_line = re.sub(r'^(tags?[:.]?\s*)', '', line, flags=re.IGNORECASE)
+                if cleaned_line:
+                    extracted = [tag.strip() for tag in cleaned_line.split(',')]
+                    tags.extend(extracted)
+                break
+    
+    # Clean and validate tags
+    cleaned_tags = []
+    for tag in tags:
+        # Remove special characters and normalize
+        clean_tag = re.sub(r'[^\w\s-]', '', tag).strip().lower()
+        if clean_tag and len(clean_tag) > 1 and len(clean_tag) < 30:
+            cleaned_tags.append(clean_tag)
+    
+    return list(set(cleaned_tags))  # Remove duplicates
 
 def main():
     # Sidebar navigation
@@ -735,67 +898,110 @@ def apply_filters(file_info, date_from, date_to, size_filter):
     return True
 
 def show_browse_files_page():
-    st.markdown("# 📁 Knowledge Vault")
+    st.markdown("""
+    <div class="main-header">
+        <h1>📁 Knowledge Vault</h1>
+        <p>Browse and manage your curated knowledge collection</p>
+    </div>
+    """, unsafe_allow_html=True)
     
     vault_path = get_vault_path()
     
     if not os.path.exists(vault_path):
-        st.info("No knowledge vault found. Create your first content to get started!")
+        st.markdown("""
+        <div class="tips-box">
+            <h3>🚀 Welcome to Your Knowledge Vault</h3>
+            <p>Your vault is empty! Start building your knowledge collection:</p>
+            <ul>
+                <li>📝 Add articles and YouTube videos</li>
+                <li>📁 Upload documents and PDFs</li>
+                <li>🔍 Search and organize with tags</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
         return
     
     # Get all markdown files
     files = glob.glob(os.path.join(vault_path, "*.md"))
     
     if not files:
-        st.info("No files in your knowledge vault yet. Start by adding some content!")
+        st.markdown("""
+        <div class="tips-box">
+            <h3>📚 Ready to Learn</h3>
+            <p>No content found yet. Add your first piece of knowledge!</p>
+        </div>
+        """, unsafe_allow_html=True)
         return
     
-    # Search and filter options
-    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
-    with col1:
-        search_term = st.text_input("🔍 Search files", placeholder="Search by filename, content, or tags...")
-    with col2:
-        search_mode = st.selectbox("Search in", ["All", "Filename only", "Content only", "Tags only"])
-    with col3:
-        sort_by = st.selectbox("Sort by", ["Date (Newest)", "Date (Oldest)", "Name (A-Z)", "Name (Z-A)", "Size"])
-    with col4:
-        view_mode = st.selectbox("View", ["List", "Grid"])
+    # Enhanced search and filter options with better UI
+    st.markdown("### 🔍 Search & Filter")
     
-    # Advanced search options
-    with st.expander("🔧 Advanced Search"):
+    # Main search row
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        search_term = st.text_input(
+            "", 
+            placeholder="🔍 Search by title, content, or tags...",
+            key="main_search",
+            label_visibility="collapsed"
+        )
+    with col2:
+        search_mode = st.selectbox("Search scope", ["All", "Title only", "Content only", "Tags only"], key="search_scope")
+    
+    # Filter row
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        sort_by = st.selectbox("📊 Sort by", ["Date (Newest)", "Date (Oldest)", "Name (A-Z)", "Name (Z-A)", "Size"])
+    with col2:
+        view_mode = st.selectbox("👁️ View", ["Cards", "List", "Compact"])
+    with col3:
+        date_filter = st.selectbox("📅 Date", ["All time", "Last week", "Last month", "Last year"])
+    with col4:
+        size_filter = st.selectbox("💾 Size", ["Any", "< 1KB", "1KB - 10KB", "10KB - 100KB", "> 100KB"])
+    
+    # Advanced filters in expander
+    with st.expander("🔧 Advanced Options"):
         col1, col2, col3 = st.columns(3)
         with col1:
-            date_from = st.date_input("From date", value=None)
+            date_from = st.date_input("From date", value=None, key="date_from")
         with col2:
-            date_to = st.date_input("To date", value=None)
+            date_to = st.date_input("To date", value=None, key="date_to")
         with col3:
-            size_filter = st.selectbox("File size", ["Any", "< 1KB", "1KB - 10KB", "10KB - 100KB", "> 100KB"])
-        
-        bulk_delete_mode = st.checkbox("🗑️ Bulk Delete Mode")
+            bulk_delete_mode = st.checkbox("🗑️ Bulk Operations", key="bulk_mode")
     
     # Process files with enhanced search
     file_data = []
     for file_path in files:
-        stat = os.stat(file_path)
-        filename = os.path.basename(file_path)
-        
-        # Apply search filter
-        if not search_file_content(file_path, search_term, search_mode):
-            continue
-        
-        file_info = {
-            'name': filename,
-            'path': file_path,
-            'size': stat.st_size,
-            'modified': datetime.fromtimestamp(stat.st_mtime),
-            'size_mb': stat.st_size / (1024 * 1024)
-        }
-        
-        # Apply advanced filters
-        if not apply_filters(file_info, date_from, date_to, size_filter):
-            continue
-        
-        file_data.append(file_info)
+        try:
+            stat = os.stat(file_path)
+            filename = os.path.basename(file_path)
+            
+            # Apply search filter
+            if not search_file_content(file_path, search_term, search_mode):
+                continue
+            
+            file_info = {
+                'name': filename,
+                'path': file_path,
+                'size': stat.st_size,
+                'modified': datetime.fromtimestamp(stat.st_mtime),
+                'size_mb': stat.st_size / (1024 * 1024),
+                'title': filename.replace('.md', '').replace('_', ' ').title()
+            }
+            
+            # Apply date filters
+            if date_filter != "All time":
+                days_ago = {"Last week": 7, "Last month": 30, "Last year": 365}[date_filter]
+                if (datetime.now() - file_info['modified']).days > days_ago:
+                    continue
+            
+            # Apply advanced filters
+            if not apply_filters(file_info, date_from, date_to, size_filter):
+                continue
+            
+            file_data.append(file_info)
+        except (OSError, IOError):
+            continue  # Skip files that can't be read
     
     # Sort files
     if sort_by == "Date (Newest)":
@@ -809,120 +1015,195 @@ def show_browse_files_page():
     elif sort_by == "Size":
         file_data.sort(key=lambda x: x['size'], reverse=True)
     
-    st.markdown(f"**Found {len(file_data)} files**")
+    # Results header with count
+    st.markdown("---")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.markdown(f"**📋 Found {len(file_data)} files** • Updated {format_time_ago(datetime.now())}")
+    with col2:
+        if len(file_data) > 0:
+            total_size_mb = sum(f['size_mb'] for f in file_data)
+            st.markdown(f"**💾 Total: {total_size_mb:.1f} MB**")
     
-    # Bulk delete functionality
-    if bulk_delete_mode:
+    # Bulk operations
+    if bulk_delete_mode and file_data:
+        st.markdown("### 🗑️ Bulk Operations")
         col1, col2, col3 = st.columns([1, 1, 2])
         with col1:
-            if st.button("🗑️ Delete Selected", type="secondary", help="Delete all selected files"):
-                selected_files = [k for k, v in st.session_state.items() if k.startswith('delete_') and v]
-                if selected_files:
-                    delete_files = []
-                    for key in selected_files:
-                        file_name = key.replace('delete_', '')
-                        for file_info in file_data:
-                            if file_info['name'] == file_name:
-                                delete_files.append(file_info)
-                                break
-                    
-                    if delete_files:
-                        with st.spinner(f"Deleting {len(delete_files)} files..."):
-                            deleted_count = 0
-                            for file_info in delete_files:
-                                try:
-                                    os.remove(file_info['path'])
-                                    if f"delete_{file_info['name']}" in st.session_state:
-                                        del st.session_state[f"delete_{file_info['name']}"]
-                                    deleted_count += 1
-                                except Exception as e:
-                                    st.error(f"Error deleting {file_info['name']}: {e}")
-                        
-                        if deleted_count > 0:
-                            st.success(f"Successfully deleted {deleted_count} files!")
-                            st.rerun()
-                else:
-                    st.warning("No files selected for deletion")
-        
-        with col2:
-            if st.button("☑️ Select All"):
+            if st.button("☑️ Select All", key="select_all_files"):
                 for file_info in file_data:
                     st.session_state[f"delete_{file_info['name']}"] = True
                 st.rerun()
-        
-        with col3:
-            if st.button("🔄 Clear Selection"):
+        with col2:
+            if st.button("🔄 Clear All", key="clear_all_files"):
                 for file_info in file_data:
                     if f"delete_{file_info['name']}" in st.session_state:
                         del st.session_state[f"delete_{file_info['name']}"]
                 st.rerun()
-    
-    # Display files
-    if view_mode == "List":
-        for file_info in file_data:
-            with st.container():
-                if bulk_delete_mode:
-                    col1, col2, col3, col4, col5 = st.columns([0.5, 2.5, 1, 1, 1])
-                    with col1:
-                        st.checkbox("", key=f"delete_{file_info['name']}", label_visibility="collapsed")
-                else:
-                    col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
-                
-                with col1 if not bulk_delete_mode else col2:
-                    st.markdown(f"**{file_info['name'].replace('.md', '')}**")
-                with col2 if not bulk_delete_mode else col3:
-                    st.text(f"{file_info['size_mb']:.2f} MB")
-                with col3 if not bulk_delete_mode else col4:
-                    st.text(file_info['modified'].strftime("%m/%d/%Y"))
-                with col4 if not bulk_delete_mode else col5:
-                    if not bulk_delete_mode:
-                        subcol1, subcol2 = st.columns(2)
-                        with subcol1:
-                            if st.button("👁️ View", key=f"view_{file_info['name']}"):
-                                st.session_state.selected_file = file_info['path']
-                                st.rerun()
-                        with subcol2:
-                            if st.button("🗑️", key=f"single_delete_{file_info['name']}", help="Delete this file"):
-                                if confirm_delete_file(file_info):
-                                    st.rerun()
-                    else:
-                        if st.button("👁️ View", key=f"view_{file_info['name']}"):
-                            st.session_state.selected_file = file_info['path']
-                            st.rerun()
-                st.divider()
-    else:
-        # Grid view
-        cols = st.columns(3)
-        for i, file_info in enumerate(file_data):
-            with cols[i % 3]:
-                if bulk_delete_mode:
-                    st.checkbox(f"Select", key=f"delete_{file_info['name']}")
-                
-                st.markdown(f"""
-                <div class="file-item">
-                    <h4>{file_info['name'].replace('.md', '')}</h4>
-                    <p>📄 {file_info['size_mb']:.2f} MB | 📅 {file_info['modified'].strftime("%m/%d/%Y")}</p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                if not bulk_delete_mode:
-                    subcol1, subcol2 = st.columns(2)
-                    with subcol1:
-                        if st.button("👁️ View", key=f"view_grid_{file_info['name']}"):
-                            st.session_state.selected_file = file_info['path']
-                            st.rerun()
-                    with subcol2:
-                        if st.button("🗑️ Delete", key=f"grid_delete_{file_info['name']}"):
-                            if confirm_delete_file(file_info):
-                                st.rerun()
-                else:
-                    if st.button("👁️ View", key=f"view_grid_{file_info['name']}"):
-                        st.session_state.selected_file = file_info['path']
+        with col3:
+            selected_count = sum(1 for file_info in file_data if st.session_state.get(f"delete_{file_info['name']}", False))
+            if selected_count > 0:
+                if st.button(f"🗑️ Delete {selected_count} Selected", type="secondary", key="delete_selected"):
+                    deleted_count = 0
+                    for file_info in file_data:
+                        if st.session_state.get(f"delete_{file_info['name']}", False):
+                            try:
+                                os.remove(file_info['path'])
+                                if f"delete_{file_info['name']}" in st.session_state:
+                                    del st.session_state[f"delete_{file_info['name']}"]
+                                deleted_count += 1
+                            except Exception as e:
+                                st.error(f"Error deleting {file_info['name']}: {e}")
+                    
+                    if deleted_count > 0:
+                        st.success(f"✅ Deleted {deleted_count} files!")
                         st.rerun()
+    
+    # Display files based on view mode
+    if not file_data:
+        st.markdown("""
+        <div class="warning-message">
+            <h4>🔍 No Results Found</h4>
+            <p>Try adjusting your search terms or filters.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        return
+    
+    if view_mode == "Cards":
+        show_files_card_view(file_data, bulk_delete_mode)
+    elif view_mode == "List":
+        show_files_list_view(file_data, bulk_delete_mode)
+    else:  # Compact
+        show_files_compact_view(file_data, bulk_delete_mode)
     
     # File viewer
     if 'selected_file' in st.session_state and st.session_state.selected_file:
         show_file_viewer(st.session_state.selected_file)
+
+def show_files_card_view(file_data, bulk_delete_mode):
+    """Display files in an attractive card-based layout."""
+    st.markdown("---")
+    
+    # Calculate grid layout
+    cols_per_row = 3
+    rows = [file_data[i:i + cols_per_row] for i in range(0, len(file_data), cols_per_row)]
+    
+    for row in rows:
+        cols = st.columns(cols_per_row)
+        for i, file_info in enumerate(row):
+            with cols[i]:
+                # Modern card design
+                card_content = f"""
+                <div class="knowledge-card">
+                    <div class="card-header">
+                        <h4 class="card-title">📄 {file_info['title'][:30]}{'...' if len(file_info['title']) > 30 else ''}</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="card-meta">
+                            <span class="meta-item">💾 {file_info['size_mb']:.2f} MB</span>
+                            <span class="meta-item">📅 {file_info['modified'].strftime('%m/%d/%Y')}</span>
+                        </div>
+                        <div class="card-time">
+                            ⏰ {format_time_ago(file_info['modified'])}
+                        </div>
+                    </div>
+                </div>
+                """
+                st.markdown(card_content, unsafe_allow_html=True)
+                
+                # Action buttons
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("👁️ View", key=f"view_card_{file_info['name']}", use_container_width=True):
+                        st.session_state.selected_file = file_info['path']
+                        st.rerun()
+                with col2:
+                    if bulk_delete_mode:
+                        st.checkbox("Select", key=f"delete_{file_info['name']}", label_visibility="collapsed")
+                    else:
+                        if st.button("🗑️", key=f"delete_card_{file_info['name']}", help="Delete file", use_container_width=True):
+                            if confirm_delete_file(file_info):
+                                st.rerun()
+
+def show_files_list_view(file_data, bulk_delete_mode):
+    """Display files in a clean list format."""
+    st.markdown("---")
+    
+    # Header row
+    if bulk_delete_mode:
+        header_cols = st.columns([0.5, 3, 1, 1, 1])
+        headers = ["", "Title", "Size", "Modified", "Actions"]
+    else:
+        header_cols = st.columns([3, 1, 1, 1])
+        headers = ["Title", "Size", "Modified", "Actions"]
+    
+    for i, header in enumerate(headers):
+        with header_cols[i]:
+            st.markdown(f"**{header}**")
+    
+    st.markdown("---")
+    
+    # File rows
+    for file_info in file_data:
+        if bulk_delete_mode:
+            cols = st.columns([0.5, 3, 1, 1, 1])
+            with cols[0]:
+                st.checkbox("", key=f"delete_{file_info['name']}", label_visibility="collapsed")
+            col_offset = 1
+        else:
+            cols = st.columns([3, 1, 1, 1])
+            col_offset = 0
+        
+        with cols[col_offset]:
+            st.markdown(f"**📄 {file_info['title']}**")
+        with cols[col_offset + 1]:
+            st.text(f"{file_info['size_mb']:.2f} MB")
+        with cols[col_offset + 2]:
+            st.text(file_info['modified'].strftime("%m/%d/%Y"))
+        with cols[col_offset + 3]:
+            if not bulk_delete_mode:
+                subcol1, subcol2 = st.columns(2)
+                with subcol1:
+                    if st.button("👁️", key=f"view_list_{file_info['name']}", help="View file"):
+                        st.session_state.selected_file = file_info['path']
+                        st.rerun()
+                with subcol2:
+                    if st.button("🗑️", key=f"delete_list_{file_info['name']}", help="Delete file"):
+                        if confirm_delete_file(file_info):
+                            st.rerun()
+            else:
+                if st.button("👁️ View", key=f"view_list_{file_info['name']}", use_container_width=True):
+                    st.session_state.selected_file = file_info['path']
+                    st.rerun()
+        
+        st.divider()
+
+def show_files_compact_view(file_data, bulk_delete_mode):
+    """Display files in a compact format for quick scanning."""
+    st.markdown("---")
+    
+    for file_info in file_data:
+        col1, col2, col3 = st.columns([4, 1, 1])
+        
+        with col1:
+            # Compact file info in one line
+            file_line = f"📄 **{file_info['title']}** • {file_info['size_mb']:.1f}MB • {format_time_ago(file_info['modified'])}"
+            if bulk_delete_mode:
+                if st.checkbox(file_line, key=f"delete_{file_info['name']}"):
+                    pass  # Checkbox handles the selection
+            else:
+                st.markdown(file_line)
+        
+        with col2:
+            if st.button("👁️ View", key=f"view_compact_{file_info['name']}", use_container_width=True):
+                st.session_state.selected_file = file_info['path']
+                st.rerun()
+        
+        with col3:
+            if not bulk_delete_mode:
+                if st.button("🗑️ Delete", key=f"delete_compact_{file_info['name']}", use_container_width=True):
+                    if confirm_delete_file(file_info):
+                        st.rerun()
 
 def show_file_viewer(file_path):
     st.markdown("---")
@@ -1112,11 +1393,25 @@ def show_analytics_page():
     # Dashboard stats
     col1, col2, col3, col4 = st.columns(4)
     
-    total_size = sum(os.path.getsize(f) for f in files) if files else 0
+    # Calculate total size more robustly
+    total_size = 0
+    if files:
+        for f in files:
+            try:
+                if os.path.exists(f) and os.path.isfile(f):
+                    total_size += os.path.getsize(f)
+            except (OSError, IOError):
+                continue  # Skip files that can't be read
+    
     avg_size = total_size / total_files if total_files > 0 else 0
     
     # Recent activity
-    recent_files = [f for f in files if (datetime.now() - datetime.fromtimestamp(os.path.getmtime(f))).days <= 7] if files else []
+    recent_files = []
+    if files:
+        try:
+            recent_files = [f for f in files if (datetime.now() - datetime.fromtimestamp(os.path.getmtime(f))).days <= 7]
+        except (OSError, IOError):
+            recent_files = []
     
     with col1:
         st.markdown(f"""
@@ -1848,6 +2143,15 @@ def process_content_with_error_handling(url):
                     if metadata and metadata.get('meta_keywords'):
                         tags.extend(metadata['meta_keywords'])
                     
+                    # Extract AI-generated tags from summary
+                    ai_tags = extract_tags_from_summary(summary)
+                    if ai_tags:
+                        tags.extend(ai_tags)
+                        logging.info(f"Auto-extracted {len(ai_tags)} tags from AI summary: {ai_tags}")
+                    
+                    # Remove duplicates and clean tags
+                    tags = list(set([tag.strip().lower() for tag in tags if tag.strip()]))
+                    
                     # Calculate word count from summary
                     word_count = len(summary.split()) if summary else 0
                     
@@ -1862,7 +2166,7 @@ def process_content_with_error_handling(url):
                         author=', '.join(metadata.get('authors', [])) if metadata else None,
                         word_count=word_count
                     )
-                    logging.info(f"Added content to database: {title}")
+                    logging.info(f"Added content to database: {title} with tags: {tags}")
                 except Exception as db_error:
                     logging.error(f"Failed to add content to database: {db_error}")
                     # Don't fail the entire process if database fails
@@ -1876,7 +2180,8 @@ def process_content_with_error_handling(url):
                 'filepath': filepath,
                 'summary': summary,
                 'saved_images': saved_images,
-                'metadata': metadata
+                'metadata': metadata,
+                'tags': tags if not DEMO_MODE else []  # Include extracted tags
             }
             
         except Exception as e:
@@ -1945,6 +2250,14 @@ def display_success_result(result):
         
         if result['metadata'] and result['metadata'].get('publish_date'):
             st.info(f"📅 Published: {result['metadata']['publish_date']}")
+        
+        # Show extracted tags if any
+        if result.get('tags'):
+            st.markdown("**🏷️ Auto-extracted Tags:**")
+            tag_cols = st.columns(min(len(result['tags']), 4))
+            for i, tag in enumerate(result['tags']):
+                with tag_cols[i % 4]:
+                    st.markdown(f"• `{tag}`")
     
     with col2:
         # Action buttons
@@ -2140,6 +2453,11 @@ def show_upload_files_page():
                                             metadata=result.get('metadata', {})
                                         )
                                         
+                                        # Extract tags from AI summary
+                                        ai_tags = extract_tags_from_summary(summary)
+                                        if ai_tags:
+                                            logging.info(f"Auto-extracted {len(ai_tags)} tags from file processing: {ai_tags}")
+                                        
                                         # Add to database
                                         db_manager.add_content(
                                             file_path=markdown_file,
@@ -2147,14 +2465,22 @@ def show_upload_files_page():
                                             content_type=result['file_type'],
                                             source_url=f"file://{temp_path}",
                                             summary=summary,
+                                            tags=ai_tags,  # Add extracted tags
                                             word_count=result.get('word_count', 0)
                                         )
                                         
                                         st.success(f"✅ Successfully processed {uploaded_file.name}")
                                         
-                                        # Show results
-                                        with st.expander(f"📖 Summary for {result['title']}", expanded=True):
-                                            st.markdown(summary)
+                                        # Show results with tag information
+                                        col1, col2 = st.columns([2, 1])
+                                        with col1:
+                                            with st.expander(f"📖 Summary for {result['title']}", expanded=True):
+                                                st.markdown(summary)
+                                        with col2:
+                                            if ai_tags:
+                                                st.markdown("**🏷️ Auto-generated Tags:**")
+                                                for tag in ai_tags:
+                                                    st.markdown(f"• `{tag}`")
                                         
                                         # Show metadata if available
                                         if result.get('metadata'):
