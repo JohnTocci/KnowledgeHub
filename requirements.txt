@@ -6,7 +6,7 @@ yt_dlp==2025.8.22
 streamlit==1.40.2
 plotly==5.24.1
 streamlit-option-menu==0.4.0
-requests==2.31.0
+requests==2.32.4
 Pillow==10.4.0
 PyPDF2==3.0.1
 python-docx==1.1.2
