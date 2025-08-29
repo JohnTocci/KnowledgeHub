@@ -273,7 +273,6 @@ def summarize_text(text, title, additional_context=""):
                 {"role": "system", "content": config.get_system_prompt()},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7,
             max_completion_tokens=4000
         )
         

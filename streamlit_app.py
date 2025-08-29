@@ -1837,6 +1837,36 @@ def process_content_with_error_handling(url):
             # Step 3: Save to knowledge vault
             filepath = save_as_markdown(summary, title, url, saved_images, metadata)
             
+            # Step 4: Add to database if not in demo mode
+            if not DEMO_MODE:
+                try:
+                    from database_manager import DatabaseManager
+                    db_manager = DatabaseManager()
+                    
+                    # Extract tags from metadata and content
+                    tags = []
+                    if metadata and metadata.get('meta_keywords'):
+                        tags.extend(metadata['meta_keywords'])
+                    
+                    # Calculate word count from summary
+                    word_count = len(summary.split()) if summary else 0
+                    
+                    # Add content to database
+                    db_manager.add_content(
+                        file_path=filepath,
+                        title=title,
+                        content_type=content_type.lower().replace(' ', '_'),
+                        source_url=url,
+                        summary=summary,
+                        tags=tags,
+                        author=', '.join(metadata.get('authors', [])) if metadata else None,
+                        word_count=word_count
+                    )
+                    logging.info(f"Added content to database: {title}")
+                except Exception as db_error:
+                    logging.error(f"Failed to add content to database: {db_error}")
+                    # Don't fail the entire process if database fails
+            
             progress_callback(1.0, "Processing complete!")
             
             return {
