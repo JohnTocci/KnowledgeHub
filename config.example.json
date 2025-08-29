@@ -1,7 +1,7 @@
 {
   "_comment": "KnowledgeHub Configuration File - Customize these settings to your preferences",
   "knowledge_vault_path": "~/KnowledgeHub",
-  "openai_model": "gpt-5-mini",
+  "openai_model": "gpt-4o-mini",
   "whisper_model": "medium",
   "date_format": "%Y-%m-%d %H:%M",
   "filename_template": "{title}.md",

@@ -79,7 +79,7 @@ The KnowledgeHub can be customized using a `config.json` file. If no configurati
 2.  **Edit the `config.json` file** to customize the following settings:
 
     -   **`knowledge_vault_path`**: The folder where your notes will be saved (default: `~/KnowledgeHub`)
-    -   **`openai_model`**: The OpenAI model to use for summarization (default: `gpt-5-mini`)
+    -   **`openai_model`**: The OpenAI model to use for summarization (default: `gpt-4o-mini`)
     -   **`whisper_model`**: The Whisper model for transcription (options: `tiny`, `base`, `small`, `medium`, `large`)
     -   **`date_format`**: Date format for timestamps (default: `%Y-%m-%d %H:%M`)
     -   **`filename_template`**: Template for saved file names (default: `{title}.md`)
@@ -93,7 +93,7 @@ The KnowledgeHub can be customized using a `config.json` file. If no configurati
 ```json
 {
   "knowledge_vault_path": "~/Documents/MyKnowledgeBase",
-  "openai_model": "gpt-5-mini",
+  "openai_model": "gpt-4o-mini",
   "whisper_model": "small",
   "date_format": "%Y-%m-%d",
   "filename_template": "{title} - {timestamp}.md"

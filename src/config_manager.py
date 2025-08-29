@@ -20,7 +20,7 @@ class Config:
         # Default configuration
         default_config = {
             "knowledge_vault_path": "~/KnowledgeHub",
-            "openai_model": "gpt-5-mini",
+            "openai_model": "gpt-4o-mini",
             "whisper_model": "medium",
             "date_format": "%Y-%m-%d %H:%M",
             "filename_template": "{title}.md",
@@ -67,7 +67,7 @@ class Config:
     
     def get_openai_model(self):
         """Get the OpenAI model to use."""
-        return self.config.get("openai_model", "gpt-5-mini")
+        return self.config.get("openai_model", "gpt-4o-mini")
     
     def get_whisper_model(self):
         """Get the Whisper model to use."""
