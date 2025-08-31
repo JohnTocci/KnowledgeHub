@@ -43,8 +43,9 @@ jobs:
     - name: Test database initialization
       env:
         OPENAI_API_KEY: fake-key-for-testing
+      shell: bash
       run: |
-        mkdir -p ~/KnowledgeHub
+        python -c "import os; os.makedirs(os.path.expanduser('~/KnowledgeHub'), exist_ok=True)"
         python -c "import sys; sys.path.append('src'); from database_manager import DatabaseManager; db = DatabaseManager(); print('Database manager initialized successfully')"
     
     - name: Test basic application functionality
@@ -52,3 +53,26 @@ jobs:
         OPENAI_API_KEY: fake-key-for-testing
       run: |
         python -c "import sys; sys.path.append('src'); from utils import ContentAnalyzer; ca = ContentAnalyzer(); result = ca.count_elements('Hello world! This is a test.'); print('Content analysis works:', result)"
+    
+    - name: Test Streamlit app can be imported
+      env:
+        OPENAI_API_KEY: fake-key-for-testing
+      shell: bash
+      run: |
+        python -c "import streamlit; print('Streamlit import successful')"
+    
+    - name: Test application integration
+      env:
+        OPENAI_API_KEY: fake-key-for-testing
+      run: |
+        python -c "
+import sys
+sys.path.append('src')
+from config_manager import config
+from database_manager import DatabaseManager
+from error_handler import log_error, APIError
+from utils import ContentAnalyzer, estimate_processing_time
+print('All core components integrated successfully')
+print('Config loaded:', config.get('openai_model'))
+print('Processing estimate for URL:', estimate_processing_time('https://example.com'))
+"
