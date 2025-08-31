@@ -1,0 +1,54 @@
+name: Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Test imports and basic functionality
+      env:
+        OPENAI_API_KEY: fake-key-for-testing
+      run: |
+        python -c "import sys; sys.path.append('src'); import database_manager, error_handler, utils; print('Core modules imported successfully')"
+        python -c "import sys; sys.path.append('src'); import hub; print('Hub module imported successfully')"
+        python -c "import streamlit; print('Streamlit version:', streamlit.__version__)"
+    
+    - name: Test configuration loading
+      run: |
+        python -c "import sys; sys.path.append('src'); from config_manager import config; print('Configuration loaded successfully')"
+    
+    - name: Test database initialization
+      env:
+        OPENAI_API_KEY: fake-key-for-testing
+      run: |
+        mkdir -p ~/KnowledgeHub
+        python -c "import sys; sys.path.append('src'); from database_manager import DatabaseManager; db = DatabaseManager(); print('Database manager initialized successfully')"
+    
+    - name: Test basic application functionality
+      env:
+        OPENAI_API_KEY: fake-key-for-testing
+      run: |
+        python -c "import sys; sys.path.append('src'); from utils import ContentAnalyzer; ca = ContentAnalyzer(); result = ca.count_elements('Hello world! This is a test.'); print('Content analysis works:', result)"
